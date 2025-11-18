@@ -63,7 +63,7 @@ let getPrefixAndUniqueName location =
   |> Array.toList
   |> function 
   | x :: [] -> 
-    x.Substring(x.LastIndexOf(@"\") + 1).Split('_') 
+    Path.GetFileName(x).Split('_') 
     |> fun xs -> xs.[0], xs.[1]
   | _ -> 
     failwith 
