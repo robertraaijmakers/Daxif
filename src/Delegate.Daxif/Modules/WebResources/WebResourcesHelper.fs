@@ -91,7 +91,7 @@ let getSyncActions proxy webresourceFolder solutionName patchSolutionName =
   let wrBaseOnly = wrBase |> Seq.filter (fun a -> not (wrPatch |> Seq.exists (fun b -> b.Id = a.Id)))
   let webResources = Seq.append wrBaseOnly wrPatch
    
-  let wrPrefix = sprintf "%s_%s" prefix solutionName
+  let wrPrefix = prefix + "_"  // Use only the publisher prefix with underscore, not prefix_solutionName
 
   let localWrPathMap = 
     CrmDataInternal.Info.version proxy
