@@ -57,7 +57,7 @@ type ConsoleLogger(logLevel : LogLevel) =
       Monitor.Exit threadSafe
     
   let log logLevel str =
-    match maxLevel.HasFlag logLevel with
+    match int maxLevel >= int logLevel with
     | false -> ()
     | true ->
       match logLevel with
@@ -79,7 +79,7 @@ type ConsoleLogger(logLevel : LogLevel) =
     | None   -> ()
 
   member t.WriteLine(logLevel, str) = 
-    match maxLevel.HasFlag logLevel with
+    match int maxLevel >= int logLevel with
     | false -> ()
     | true -> log logLevel str
 

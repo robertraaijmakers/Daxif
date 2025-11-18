@@ -3,9 +3,9 @@
 open System
 open Microsoft.Xrm.Sdk
 open Microsoft.Xrm.Sdk.Query
-open Microsoft.Xrm.Sdk.Client
 open Microsoft.Crm.Sdk.Messages
 open Microsoft.Xrm.Sdk.Messages
+open Microsoft.PowerPlatform.Dataverse.Client
 
 open System.IO
 open System.IO.Compression
@@ -40,13 +40,19 @@ let attachToSolution solutionName (req: #OrganizationRequest) =
   req.Parameters.Add("SolutionUniqueName", solutionName)
   req
 
-/// Impersonate a user
-let impersonateUser (proxy: OrganizationServiceProxy) userGuid func =
-  let oldCallerId = proxy.CallerId
-  proxy.CallerId <- userGuid
-  let result = func proxy
-  proxy.CallerId <- oldCallerId
-  result
+/// Impersonate a user - works with both ServiceClient and IOrganizationService
+let impersonateUser (service: IOrganizationService) userGuid func =
+  match service with
+  | :? ServiceClient as client ->
+      let oldCallerId = client.CallerId
+      client.CallerId <- userGuid
+      let result = func service
+      client.CallerId <- oldCallerId
+      result
+  | _ ->
+      // For other IOrganizationService implementations, just execute without impersonation
+      // Note: You may need to handle this differently based on your requirements
+      func service
 
 /// Parses a fault to a list of strings
 let rec parseFault (fault: OrganizationServiceFault) =

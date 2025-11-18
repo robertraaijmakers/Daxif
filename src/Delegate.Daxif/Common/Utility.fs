@@ -90,7 +90,7 @@ let unionToString (x : 'a) =
   match FSharpValue.GetUnionFields(x, typeof<'a>, true) with
   | case, _ -> case.Name
   
-let stringToEnum<'T> str = Enum.Parse(typedefof<'T>, str) :?> 'T
+let stringToEnum<'T> (str:string) = Enum.Parse(typedefof<'T>, str) :?> 'T
 
 /// ISO-8601
 let timeStamp() = 
@@ -127,16 +127,16 @@ let toArgString argFunc (args: seq<string * string>) =
 let toArgStringDefault args = toArgString toArg args
 
 
-let executeProcessWithDir (exe, args, dir) = 
-  let psi = new ProcessStartInfo(exe, args)
+let executeProcessWithDir (exe: string, args: string, dir) = 
+  let psi = ProcessStartInfo(exe, args)
   psi.CreateNoWindow <- true
   psi.UseShellExecute <- false
   psi.RedirectStandardOutput <- true
   psi.RedirectStandardError <- true
   psi.WorkingDirectory <- dir
   let p = Process.Start(psi)
-  let o = new StringBuilder()
-  let e = new StringBuilder()
+  let o = StringBuilder()
+  let e = StringBuilder()
   p.OutputDataReceived.Add(fun x -> o.AppendLine(x.Data) |> ignore)
   p.ErrorDataReceived.Add(fun x -> e.AppendLine(x.Data) |> ignore)
   p.BeginErrorReadLine()
@@ -145,8 +145,7 @@ let executeProcessWithDir (exe, args, dir) =
   p.ExitCode, o.ToString(), e.ToString()
   
 let executeProcess (exe, args) = 
-  let fn = Path.GetFileName(exe)
-  let dir = DirectoryInfo(exe).FullName.Replace(fn, "")
+  let dir = Path.GetDirectoryName(exe: string)
   (exe, args, dir) |> executeProcessWithDir
 
 
@@ -203,9 +202,9 @@ let tryFindArgOpt toFind argMapOpt =
 
 /// Alters a given filename of a path with the mapping function
 let alterFilenameInPath path mapper =
-  let newFileName = Path.GetFileNameWithoutExtension path |> mapper
-  let dir = Path.GetDirectoryName path
-  let ext = Path.GetExtension path
+  let newFileName = Path.GetFileNameWithoutExtension(path: string) |> mapper
+  let dir = Path.GetDirectoryName(path: string)
+  let ext = Path.GetExtension(path: string)
   dir ++ (newFileName + ext)
 
 /// Adds specified ending to the end of the filename found in the path
@@ -214,9 +213,9 @@ let addEndingToFilename path ending =
 
  
 /// Parses a string to a Maybe int
-let parseInt str =
-  let mutable intvalue = 0
-  if System.Int32.TryParse(str, &intvalue) then Some(intvalue)
+let parseInt (str: string) =
+  let mutable intValue = 0
+  if Int32.TryParse(str, &intValue) then Some intValue
   else None
 
 /// Parses a string into a Version

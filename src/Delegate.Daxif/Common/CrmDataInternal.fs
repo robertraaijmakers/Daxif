@@ -65,11 +65,10 @@ module CrmDataInternal =
       e.Attributes.Add("statuscode", OptionSetValue(status))
       proxy.Update(e)
     
-    let assignReq userid (logicalName: string) (guid: Guid) = 
-      let e = Entity(logicalName,guid)
-      e.Attributes.Add("ownerid", EntityReference("systemuser", id = userid))
-      let req = Messages.UpdateRequest()
-      req.Target <- e
+    let assignReq (userid: Guid) (logicalName: string) (guid: Guid) = 
+      let req = Messages.AssignRequest()
+      req.Assignee <- EntityReference("systemuser", userid)
+      req.Target <- EntityReference(logicalName, guid)
       req
     
     let assign proxy userid logicalName guid = 
@@ -336,7 +335,7 @@ module CrmDataInternal =
       CrmDataHelper.retrieveFirstMatch proxy q
     
     let retrieveSolutionId proxy uniqueName =
-      (ColumnSet(null) |> retrieveSolution proxy uniqueName).Id
+      (ColumnSet() |> retrieveSolution proxy uniqueName).Id
 
     let retrieveSolutionIdAndPrefix proxy uniqueName = 
       ColumnSet("uniquename", "publisherid") |> retrieveSolution proxy uniqueName

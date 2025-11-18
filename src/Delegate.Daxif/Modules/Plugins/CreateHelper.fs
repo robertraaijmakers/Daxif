@@ -123,12 +123,12 @@ let createAPIs proxy solutionName prefix apiDiff targetAPIs asmId (types: Map<st
     apiArray
     |> Array.map (fun (_, api: Message) -> 
        match types.TryGetValue api.pluginTypeName with
-       | true, value -> api.name, EntitySetup.createCustomAPI (api) (EntityReference("plugintype", id = value)) (prefix)
-       | _           -> null, null
+       | true, value -> Some (api.name, EntitySetup.createCustomAPI (api) (EntityReference("plugintype", id = value)) (prefix))
+       | _           -> None
        )
+    |> Array.choose id
 
   newApis
-  |> Array.filter( fun (name, record) -> name <> null)
   |>> Array.iter (fun (name, record) -> log.Info "Creating %s: %s" record.LogicalName name)
   |> Array.map (snd >> makeCreateReq >> attachToSolution solutionName >> toOrgReq)
   |> CrmDataHelper.performAsBulkResultHandling proxy raiseExceptionIfFault 

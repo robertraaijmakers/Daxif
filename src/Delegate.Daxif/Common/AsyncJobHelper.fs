@@ -21,8 +21,17 @@ type AsyncJobStatus =
 
 let retrieveAsyncJobState proxy asyncJobId =
   let systemJob = CrmDataHelper.retrieve proxy "asyncoperation" asyncJobId (RetrieveSelect.Fields ["statuscode"])
-  systemJob.GetAttributeValue<OptionSetValue>("statuscode")
-  |> fun o -> Utility.stringToEnum<AsyncJobState> (o.Value.ToString())
+  let o = systemJob.GetAttributeValue<OptionSetValue>("statuscode")
+  match o.Value with
+  | 0 -> AsyncJobState.WaitingForResources
+  | 10 -> AsyncJobState.Waiting
+  | 20 -> AsyncJobState.InProgress
+  | 21 -> AsyncJobState.Pausing
+  | 22 -> AsyncJobState.Canceling
+  | 30 -> AsyncJobState.Succeeded
+  | 31 -> AsyncJobState.Failed
+  | 32 -> AsyncJobState.Canceled
+  | v -> failwithf "Unknown AsyncJobState value: %d" v
 
 let getJobStatus service asyncJobId =
   try

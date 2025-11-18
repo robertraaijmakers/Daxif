@@ -21,7 +21,7 @@ type RetrieveSelect =
     member x.columnSet =
       match x with
       | All      -> ColumnSet(true)
-      | OnlyId   -> ColumnSet(null)
+      | OnlyId   -> ColumnSet()
       | Fields x -> ColumnSet(Array.ofSeq x)
 
 
@@ -139,7 +139,7 @@ let retrieveMultiple proxy (query:QueryExpression) =
   
 /// Retrieve multiple which returns the first match, or raises an exception if no matches were found
 let retrieveFirstMatch (proxy: IOrganizationService) (query: QueryExpression) = 
-  query.TopCount <- Nullable(1)
+  query.TopCount <- 1
   proxy.RetrieveMultiple(query).Entities
   |> Seq.tryHead
   |> function

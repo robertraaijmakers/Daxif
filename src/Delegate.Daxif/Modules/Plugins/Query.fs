@@ -150,7 +150,7 @@ let pluginStepImagesBySolution (solutionId: Guid) =
 let sdkMessage (eventOperation: string) = 
   let q = QueryExpression("sdkmessage")
   q.ColumnSet <- ColumnSet("sdkmessageid", "name")
-  q.TopCount <- Nullable(1)
+  q.TopCount <- 1
 
   let f = FilterExpression()
   f.AddCondition(ConditionExpression("name", ConditionOperator.Equal, eventOperation))

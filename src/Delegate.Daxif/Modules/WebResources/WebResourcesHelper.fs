@@ -20,12 +20,12 @@ let getMatchingEntitiesByName namesToKeep =
   
 // Convert a local web resource file to an entity object.
 let localResourceToWebResource path name = 
-  let ext = Path.GetExtension(path).ToUpper().Replace(@".", String.Empty)
-  let webResourceType = Enum.Parse(typeof<WebResourceType>, ext.ToUpper()) :?> WebResourceType
+  let ext = Path.GetExtension(path: string).ToUpper().Replace(@".", String.Empty)
+  let webResourceType = Enum.Parse(typeof<WebResourceType>, (ext.ToUpper(): string)) :?> WebResourceType
   
   let wr = Entity("webresource")
   wr.Attributes.Add("content", fileToBase64 path)
-  wr.Attributes.Add("displayname", Path.GetFileName name)
+  wr.Attributes.Add("displayname", Path.GetFileName(name: string))
   wr.Attributes.Add("name", name)
   wr.Attributes.Add("webresourcetype", OptionSetValue(int webResourceType))
 

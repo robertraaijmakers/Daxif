@@ -1,7 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <DebugType>portable</DebugType>
+    <!-- Copy all runtime dependencies to output folder for PowerShell scripts -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
     <PackageProjectUrl>http://delegateas.github.io/</PackageProjectUrl>
@@ -29,6 +31,9 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="RELEASE_NOTES.md" />
+    <None Include="Delegate.Daxif.dll.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Daxif.fs" />
     <Compile Include="ConsoleLogger.fs" />
@@ -39,39 +44,11 @@
     <Compile Include="Common\CrmAuth.fs" />
     <Compile Include="Common\CrmDataHelper.fs" />
     <Compile Include="Common\Resource.fs" />
-    <Compile Include="Common\ServiceManager__ToDeprecate.fs" />
-    <Compile Include="Common\ServiceProxy__ToDeprecate.fs" />
     <Compile Include="Common\CrmData.fs" />
     <Compile Include="Common\CrmDataInternal.fs" />
     <Compile Include="Common\AsyncJobHelper.fs" />
-    <Compile Include="Setup\CredentialManagement.fs" />
     <Compile Include="Setup\EnvironmentSetup.fs" />
-    <Compile Include="Modules\View\TypeDeclarations.fs" />
-    <Compile Include="Modules\View\AllowedConditions.fs" />
-    <Compile Include="Modules\View\XmlManipulator.fs" />
-    <Compile Include="Modules\View\AttributeTypes.fs" />
-    <Compile Include="Modules\View\ViewHelper.fs" />
-    <Compile Include="Modules\View\Generator.fs" />
-    <Compile Include="Modules\View\Main.fs" />
-    <Compile Include="Modules\Info\InfoHelper.fs" />
-    <Compile Include="Modules\Info\Main.fs" />
-    <Compile Include="Modules\Serialization\SerializationHelper.fs" />
-    <Compile Include="Modules\Serialization\Main.fs" />
-    <Compile Include="Modules\Solution\AttributeMapping.fs" />
-    <Compile Include="Modules\Solution\Domain.fs" />
-    <Compile Include="Modules\Solution\Import.fs" />
-    <Compile Include="Modules\Solution\Export.fs" />
-    <Compile Include="Modules\Solution\Extend.fs" />
-    <Compile Include="Modules\Solution\SolutionHelper.fs" />
-    <Compile Include="Modules\Solution\DiffFetcher.fs" />
-    <Compile Include="Modules\Solution\DiffAdder.fs" />
-    <Compile Include="Modules\Solution\SolutionDiffHelper.fs" />
     <Compile Include="Modules\Solution\Main.fs" />
-    <Compile Include="Modules\Solution\Versioning.fs" />
-    <Compile Include="Modules\Data\DataHelper.fs" />
-    <Compile Include="Modules\Data\Main.fs" />
-    <Compile Include="Modules\Translations\TranslationsHelper.fs" />
-    <Compile Include="Modules\Translations\Main.fs" />
     <Compile Include="Modules\Plugins\Domain.fs" />
     <Compile Include="Modules\Plugins\Validation.fs" />
     <Compile Include="Modules\Plugins\PluginDetection.fs" />
@@ -82,19 +59,10 @@
     <Compile Include="Modules\Plugins\CreateHelper.fs" />
     <Compile Include="Modules\Plugins\MainHelper.fs" />
     <Compile Include="Modules\Plugins\Main.fs" />
-    <Compile Include="Modules\Workflows\WorkflowsHelper.fs" />
-    <Compile Include="Modules\Workflows\Main.fs" />
     <Compile Include="Modules\WebResources\WebResourcesHelper.fs" />
     <Compile Include="Modules\WebResources\Main.fs" />
-    <Compile Include="API\Data.fs" />
     <Compile Include="API\Plugin.fs" />
-    <Compile Include="API\Solution.fs" />
-    <Compile Include="API\ExtendedSolution.fs" />
-    <Compile Include="API\Translations.fs" />
     <Compile Include="API\WebResource.fs" />
-    <Compile Include="API\Workflow.fs" />
-    <Compile Include="API\View.fs" />
-    <Compile Include="API\Info.fs" />
     <Content Include="bin\Release\$(TargetFramework)\Delegate.Daxif.pdb" Pack="true" PackagePath="content\Daxif\bin" />
     <Content Include="bin\Release\$(TargetFramework)\Delegate.Daxif.xml" Pack="true" PackagePath="content\Daxif\bin" />
     <Content Include="bin\Release\$(TargetFramework)\*.dll" Pack="true" PackagePath="content\Daxif\bin" />
@@ -102,71 +70,19 @@
     <None Include="..\resources\delegate_daxif_logo_small.png" Pack="true" PackagePath="" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="System.Activities" />
-    <Reference Include="System.Activities.Presentation" />
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.IO.Compression.FileSystem" />
-    <Reference Include="System.Net" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Net.Http.WebRequest" />
-    <Reference Include="System.Runtime" />
-    <Reference Include="System.Workflow.Activities" />
-    <Reference Include="System.Workflow.ComponentModel" />
-    <Reference Include="System.Workflow.Runtime" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System" />
-    <Reference Include="System.Configuration" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Data.Services" />
-    <Reference Include="System.Data.Services.Client" />
-    <Reference Include="System.DirectoryServices" />
-    <Reference Include="System.DirectoryServices.AccountManagement" />
-    <Reference Include="System.IdentityModel" />
-    <Reference Include="System.Numerics" />
-    <Reference Include="System.Runtime.Caching" />
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.Security" />
-    <Reference Include="System.ServiceModel" />
-    <Reference Include="System.ServiceModel.Web" />
-    <Reference Include="System.ServiceProcess" />
-    <Reference Include="System.Web" />
-    <Reference Include="System.Web.Services" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Xml" />
-    <Reference Include="mscorlib" />
-    <Reference Include="System.Xml.Linq" />
     <Reference Include="SolutionPackagerLib">
       <HintPath>$(PkgMicrosoft_CrmSdk_CoreTools)\content\bin\coretools\SolutionPackagerLib.dll</HintPath>
       <PackageCopyToOutput>true</PackageCopyToOutput>
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.*">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
+    <PackageReference Include="Microsoft.PowerPlatform.Dataverse.Client" Version="1.1.*" />
     <PackageReference Include="Microsoft.CrmSdk.CoreTools" Version="9.1.0.*" GeneratePathProperty="true">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.CrmSdk.Deployment" Version="9.0.2.*">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.CrmSdk.Workflow" Version="9.0.2.*">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.CrmSdk.XrmTooling.CoreAssembly" Version="9.1.1.*">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.IdentityModel" Version="7.0.*">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Update="FSharp.Core" Version="7.0.*">
+    <PackageReference Update="FSharp.Core" Version="8.0.*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; compile; build; native; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Update="System.ValueTuple" Version="4.5.*">
-      <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
 </Project>

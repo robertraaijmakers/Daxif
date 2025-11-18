@@ -44,7 +44,7 @@ let localToMaps (plugins: Plugin seq) (customAPIs: CustomAPI seq) =
     {
     step = {
         pluginTypeName = name
-        executionStage = 1
+        executionStage = 10
         eventOperation = ""
         logicalName = ""
         deployment = 1

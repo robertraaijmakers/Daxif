@@ -20,11 +20,11 @@ let assemblyVersion =
 let assemblyFileVersion() = 
   FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion
 let sha256CheckSum' bytes = 
-  BitConverter.ToString(SHA256Managed.Create().ComputeHash(buffer = bytes))
+  BitConverter.ToString(SHA256.Create().ComputeHash(buffer = bytes))
               .Replace("-", String.Empty)
 let sha256CheckSum s = Encoding.UTF8.GetBytes(s = s) |> sha256CheckSum'
 let sha1CheckSum' bytes = 
-  BitConverter.ToString(SHA1Managed.Create().ComputeHash(buffer = bytes))
+  BitConverter.ToString(SHA1.Create().ComputeHash(buffer = bytes))
               .Replace("-", String.Empty)
 let sha1CheckSum s = Encoding.UTF8.GetBytes(s = s) |> sha1CheckSum'
 
@@ -50,11 +50,11 @@ let fnv1aHash (key: string) =
     |> fnv1aHash'
     |> fun x -> x.ToString("X")
   
-let decode = Web.HttpUtility.HtmlDecode
-let encode = Web.HttpUtility.HtmlEncode
-let urldecode = Web.HttpUtility.UrlDecode
-let urlencode s = Web.HttpUtility.UrlEncode(str = s)
-let escape = Security.SecurityElement.Escape
+let decode = WebUtility.HtmlDecode
+let encode = WebUtility.HtmlEncode
+let urldecode = WebUtility.UrlDecode
+let urlencode s = WebUtility.UrlEncode(s)
+let escape = WebUtility.HtmlEncode
 let executingPath =
 #if INTERACTIVE 
   Path.GetTempPath()
@@ -78,15 +78,13 @@ let dMapLookup (dMap : Map<_, Map<_, _>>) key1 key2 =
   | None -> None
   | Some map -> map.TryFind(key2)  
 
-let touch path = 
+let touch (path: string) = 
   try 
-    let as' = 
-      (File.GetAttributes(path) ||| /// Ensure is set with OR
-                                    FileAttributes.ReadOnly) 
-      ^^^ /// And then remove with XOR
-          FileAttributes.ReadOnly
-    File.SetAttributes(path, as')
-    File.SetLastWriteTimeUtc(path, DateTime.UtcNow)
+    let attr = File.GetAttributes(path)
+    if attr &&& FileAttributes.ReadOnly = FileAttributes.ReadOnly
+    then
+      File.SetAttributes(path, attr &&& ~~~FileAttributes.ReadOnly)
+      File.SetLastWriteTimeUtc(path, DateTime.UtcNow)
   with ex -> failwith ex.Message
   
 let fileToBase64 path = Convert.ToBase64String(File.ReadAllBytes(path))

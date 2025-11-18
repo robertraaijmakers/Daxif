@@ -8,6 +8,9 @@ open DG.Daxif.Common.InternalUtility
 
 open Domain
 
+let private executionModeToString = function | 0 -> "Synchronous" | 1 -> "Asynchronous" | _ -> "Unknown"
+let private executionStageToString = function | 10 -> "PreValidation" | 20 -> "Pre" | 40 -> "Post" | _ -> "Unknown"
+
 /// Transforms the received tuple from the assembly file through invocation into
 /// plugin, step and image records
 let tupleToPlugin 
@@ -18,8 +21,8 @@ let tupleToPlugin
   let entity' = 
     String.IsNullOrEmpty(logicalName) |> function
     | true -> "any Entity" | false -> logicalName
-  let execMode = (enum<ExecutionMode> mode).ToString()
-  let execStage = (enum<ExecutionStage> stage).ToString()
+  let execMode = executionModeToString mode
+  let execStage = executionStageToString stage
   let stepName = sprintf "%s: %s %s %s of %s" className execMode execStage eventOp entity'
 
   let step = 
@@ -32,7 +35,7 @@ let tupleToPlugin
       name = stepName
       executionOrder = order
       filteredAttributes = fAttr
-      userContext = Guid.Parse(userId)
+      userContext = Guid.Parse(userId: string)
     }
     
   let images =
@@ -53,7 +56,7 @@ let tupleToPlugin
 /// custom api, request parameter and response property records
 let tupleToCustomApi
   ((name, isFunction, enabledForWorkflow, allowedCustomProcessingStepType, bindingType, boundEntityLogicalName),
-    (pluginTypeName, ownerId, ownerType, isCustomizable, isPrivate, executePrivilegeName, description),
+    (pluginTypeName, (ownerId: string), ownerType, isCustomizable, isPrivate, executePrivilegeName, description),
     reqParams: seq<Tuple<string, string, string, bool, bool, string, int>>, resProps: seq<Tuple<string, string, string, bool, string, int>>) = 
   
   //let entity' = 
@@ -62,7 +65,7 @@ let tupleToCustomApi
   //let execMode = (enum<ExecutionMode> mode).ToString()
   //let execStage = (enum<ExecutionStage> stage).ToString()
   //let stepName = sprintf "%s: %s %s %s of %s" className execMode execStage eventOp entity'
-  let result = ref Guid.Empty
+  let mutable result = Guid.Empty
   let message = 
     { 
       uniqueName = name
@@ -75,7 +78,7 @@ let tupleToCustomApi
       boundEntityLogicalName = boundEntityLogicalName
       allowedCustomProcessingStepType = allowedCustomProcessingStepType
       pluginTypeName = pluginTypeName
-      ownerId = if Guid.TryParse(ownerId, result) then result.Value else Guid.Empty // TODO
+      ownerId = let mutable result = Guid.Empty in if Guid.TryParse(ownerId, &result) then result else Guid.Empty // TODO
       ownerType = ownerType
       isCustomizable = isCustomizable
       isPrivate = isPrivate

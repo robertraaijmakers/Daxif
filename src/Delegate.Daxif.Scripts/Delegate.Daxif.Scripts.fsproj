@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <DebugType>portable</DebugType>
   </PropertyGroup>
   <PropertyGroup>
@@ -32,4 +32,25 @@
   <ItemGroup>
     <PackageReference Update="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
+  
+  <!-- Copy Daxif and dependencies to ScriptTemplates/Daxif for PowerShell scripts -->
+  <Target Name="CopyDaxifToScriptTemplates" AfterTargets="Build">
+    <PropertyGroup>
+      <ScriptDaxifFolder>$(ProjectDir)ScriptTemplates\Daxif</ScriptDaxifFolder>
+      <DaxifBinFolder>..\Delegate.Daxif\bin\$(Configuration)\$(TargetFramework)</DaxifBinFolder>
+      <DaxifConsoleBinFolder>..\Delegate.Daxif.Console\bin\$(Configuration)\$(TargetFramework)</DaxifConsoleBinFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <DaxifFiles Include="$(DaxifBinFolder)\*.dll" />
+      <DaxifConfigFiles Include="$(DaxifBinFolder)\*.config" />
+      <DaxifConsoleFiles Include="$(DaxifConsoleBinFolder)\*.dll" />
+      <DaxifConsoleJsonFiles Include="$(DaxifConsoleBinFolder)\*.json" />
+    </ItemGroup>
+    <MakeDir Directories="$(ScriptDaxifFolder)" />
+    <Copy SourceFiles="@(DaxifFiles)" DestinationFolder="$(ScriptDaxifFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DaxifConfigFiles)" DestinationFolder="$(ScriptDaxifFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DaxifConsoleFiles)" DestinationFolder="$(ScriptDaxifFolder)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DaxifConsoleJsonFiles)" DestinationFolder="$(ScriptDaxifFolder)" SkipUnchangedFiles="true" Condition="Exists('$(DaxifConsoleBinFolder)')" />
+    <Message Text="Copied Daxif assemblies, console CLI, and config files to $(ScriptDaxifFolder)" Importance="high" />
+  </Target>
 </Project>

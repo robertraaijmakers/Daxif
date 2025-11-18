@@ -128,7 +128,12 @@ let getRelevantMessagesAndFilters proxy (steps: Step seq) : Map<(EventOperation 
     |> CrmDataHelper.performAsBulkResultHandling proxy raiseExceptionIfFault
       (fun resp -> 
         let result = (resp.Response :?> RetrieveMultipleResponse)
-        let message = result.EntityCollection.Entities.[0]
+        let message = 
+            match result.EntityCollection.Entities |> Seq.tryHead with
+            | Some m -> m
+            | None ->
+                let messageName = fst messageRequests.[resp.RequestIndex]
+                failwithf "SdkMessage with name '%s' not found." messageName
         let messageName = fst messageRequests.[resp.RequestIndex]
         messageName, message.Id
       )
@@ -152,7 +157,12 @@ let getRelevantMessagesAndFilters proxy (steps: Step seq) : Map<(EventOperation 
     |> CrmDataHelper.performAsBulkResultHandling proxy raiseExceptionIfFault
       (fun resp -> 
         let result = (resp.Response :?> RetrieveMultipleResponse)
-        let filter = result.EntityCollection.Entities.[0]
+        let filter = 
+            match result.EntityCollection.Entities |> Seq.tryHead with
+            | Some f -> f
+            | None ->
+                let (op, logicalName, _, _) = filterRequests.[resp.RequestIndex]
+                failwithf "SdkMessageFilter with for operation '%s' and entity '%s' not found." op logicalName
         let (op, logicalName, messageId, _) = filterRequests.[resp.RequestIndex]
         (op, logicalName), (messageId, filter.Id)
       )
