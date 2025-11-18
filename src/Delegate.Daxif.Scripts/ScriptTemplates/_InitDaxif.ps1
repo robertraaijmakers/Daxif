@@ -76,14 +76,14 @@ function Invoke-Daxif {
     $daxifCli = Join-Path $config.Path.toolsFolder "daxif.dll"
     
     Write-Host "Executing: dotnet $daxifCli $($Arguments -join ' ')" -ForegroundColor Gray
+    Write-Host "" # Empty line for readability
     
-    $result = & dotnet $daxifCli @Arguments
+    # Run the command and stream output in real-time
+    & dotnet $daxifCli @Arguments
     
     if ($LASTEXITCODE -ne 0) {
         throw "Daxif command failed with exit code $LASTEXITCODE"
     }
-    
-    return $result
 }
 
 # Get the environment configuration (default to Dev)

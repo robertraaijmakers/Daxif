@@ -59,9 +59,14 @@ return @{
     ##
     # CRM Solution Setup
     ##
-    SolutionInfo = @{
-        name = "YourSolutionName"
-        displayName = "Your Solution Display Name"
+    SolutionInfoPlugins = @{
+        name = "Plugins_AutoRollOutTest"
+        displayName = "Plugins"
+    }
+
+    SolutionInfoWebresources = @{
+        name = "Webresources_AutoRollOutTest"
+        displayName = "Webresources"
     }
 
     ##

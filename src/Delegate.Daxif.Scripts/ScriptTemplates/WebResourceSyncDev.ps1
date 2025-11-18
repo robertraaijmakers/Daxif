@@ -6,7 +6,7 @@
 $config = Import-Module $PSScriptRoot\_InitDaxif.ps1 -force
 
 Write-Host "`nSyncing Web Resources..." -ForegroundColor Cyan
-Write-Host "Solution: $($config.SolutionInfo.name)" -ForegroundColor Gray
+Write-Host "Solution: $($config.SolutionInfoWebresources.name)" -ForegroundColor Gray
 
 # Verify web resource folder exists
 $webResourceFolder = $config.Path.webResourceProject
@@ -32,13 +32,16 @@ try {
         "webresource",
         "sync",
         "--folder", $webResourceFolder,
-        "--solution", $config.SolutionInfo.name
+        "--solution", $config.SolutionInfoWebresources.name
     )
     
     Write-Host "`n✓ Web resources synced successfully!" -ForegroundColor Green
 } catch {
     Write-Host "`n✗ Error syncing web resources:" -ForegroundColor Red
     Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.Exception.InnerException) {
+        Write-Host "  $($_.Exception.InnerException.Message)" -ForegroundColor Red
+    }
 }
 
 Read-Host -Prompt "Press Enter to exit"

@@ -6,7 +6,7 @@
 $config = Import-Module $PSScriptRoot\_InitDaxif.ps1 -force
 
 Write-Host "`nSyncing Plugins..." -ForegroundColor Cyan
-Write-Host "Solution: $($config.SolutionInfo.name)" -ForegroundColor Gray
+Write-Host "Solution: $($config.SolutionInfoPlugins.name)" -ForegroundColor Gray
 
 $config.Plugins.projects | ForEach-Object {
     $projectName = $_
@@ -43,12 +43,15 @@ $config.Plugins.projects | ForEach-Object {
             "plugin",
             "sync",
             "--assembly", $pluginDll,
-            "--solution", $config.SolutionInfo.name
+            "--solution", $config.SolutionInfoPlugins.name
         )
         
         Write-Host "  ✓ Sync completed" -ForegroundColor Green
     } catch {
         Write-Host "  ✗ Sync failed: $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.Exception.InnerException) {
+            Write-Host "  $($_.Exception.InnerException.Message)" -ForegroundColor Red
+        }
     }
 }
 
