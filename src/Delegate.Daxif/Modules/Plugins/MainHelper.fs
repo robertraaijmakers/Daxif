@@ -125,12 +125,12 @@ let deleteAssemblyWithDependencies proxy assemblyId =
     if items.Length > 0 then
       log.Info "Deleting %d %s" items.Length itemName
       items
-      |> Array.chunkBySize 200
+      |> Array.chunkBySize 500
       |> Array.iteri (fun idx batch ->
         if idx > 0 then
           System.Threading.Thread.Sleep(1000) // 1 second delay between batches
-        if items.Length > 200 then
-          log.Verbose "Deleting %s batch %d/%d (%d items)" itemName (idx + 1) ((items.Length + 199) / 200) batch.Length
+        if items.Length > 500 then
+          log.Verbose "Deleting %s batch %d/%d (%d items)" itemName (idx + 1) ((items.Length + 499) / 500) batch.Length
         batch 
         |> Array.map (makeDeleteReq >> toOrgReq) 
         |> CrmDataHelper.performAsBulkResultHandling proxy raiseExceptionIfFault ignore 
@@ -240,10 +240,34 @@ let create proxy solutionName prefix sourceImgs imgDiff stepDiff apiDiff apiReqD
   let types = CreateHelper.createTypes proxy solutionName typeDiff asmId targetTypes
   
   // Create steps - this already handles batching internally via performAsBulk
-  // which chunks into 200-item batches
-  let allStepMap =
+  // which chunks into batches of 20
+  let _tempStepMap =
     types
     |> CreateHelper.createSteps proxy solutionName stepDiff targetSteps
+  
+  // After creating steps, re-query ALL steps from CRM to get accurate step map
+  // This is necessary because batched creation causes RequestIndex issues
+  log.Verbose "Re-querying all steps from CRM to build complete step map"
+  let allStepMap = 
+    if stepDiff.adds.Count > 0 then
+      // Query all steps for all types
+      let registeredSteps = 
+        types
+        |> Map.toSeq
+        |> Seq.collect (fun (_, typeId) ->
+          Query.pluginStepsByType typeId
+          |> CrmDataHelper.retrieveMultiple proxy
+          |> Seq.map (fun e -> 
+            let name = getRecordName e
+            name, e
+          )
+        )
+        |> Map.ofSeq
+      Retrieval.getStepMap proxy registeredSteps
+    else
+      _tempStepMap
+  
+  log.Verbose "Complete step map has %d steps" allStepMap.Count
   
   // Re-retrieve images from CRM to avoid duplicates
   // Query images for ALL steps that have images in source code to determine which already exist
@@ -346,12 +370,12 @@ let create proxy solutionName prefix sourceImgs imgDiff stepDiff apiDiff apiReqD
   if imagesByStep.Length > 0 then
     log.Verbose "Creating %d images in batches" imagesByStep.Length
     imagesByStep
-    |> Array.chunkBySize 20
+    |> Array.chunkBySize 100
     |> Array.iteri (fun idx batch ->
       if idx > 0 then
         System.Threading.Thread.Sleep(1000) // 1 second delay between batches
-      if imagesByStep.Length > 20 then
-        log.Info "Creating image batch %d/%d (%d images)" (idx + 1) ((imagesByStep.Length + 19) / 20) batch.Length
+      if imagesByStep.Length > 100 then
+        log.Info "Creating image batch %d/%d (%d images)" (idx + 1) ((imagesByStep.Length + 99) / 100) batch.Length
       let batchImgDiff = { freshImgDiff with adds = Map.ofArray batch }
       CreateHelper.createImages proxy solutionName batchImgDiff allStepMap
     )

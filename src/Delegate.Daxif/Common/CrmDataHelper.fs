@@ -76,7 +76,7 @@ let executeRequest proxy request =
 /// Perform requests as bulk
 let performAsBulk proxy (reqs: OrganizationRequest[]) = 
   reqs
-  |> Array.chunkBySize 20
+  |> Array.chunkBySize 100
   |> Array.mapi (fun idx splitReqs ->
     if idx > 0 then
       System.Threading.Thread.Sleep(1000) // 1 second delay between batches
