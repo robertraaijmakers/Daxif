@@ -107,14 +107,17 @@ let customAPIReqParamsByCustomApiId (customApiId: Guid) =
   q.Criteria <- f
   q
 
-/// Create a query to get custom apis by solution
-let customAPIRespParamsByCustomApiId (customApiId: Guid) = 
+/// Create a query to get custom api response properties by custom api id
+let customAPIRespPropsByCustomApiId (customApiId: Guid) = 
   let q = QueryExpression("customapiresponseproperty")
   q.ColumnSet <- ColumnSet(true)
   let f = FilterExpression()
   f.AddCondition(ConditionExpression("customapiid", ConditionOperator.Equal, customApiId))
   q.Criteria <- f
   q
+
+/// Alias for backward compatibility
+let customAPIRespParamsByCustomApiId = customAPIRespPropsByCustomApiId
 
 /// Create a query to get custom apis by type
 let CustomAPIsByType (typeId: Guid) = 
@@ -160,7 +163,7 @@ let sdkMessage (eventOperation: string) =
 /// Create a query to get a SdkMessageFilter from its parent message and entity type
 let sdkMessageFilter (primaryObjectType: string) (sdkMessageId: Guid) = 
   let q = QueryExpression("sdkmessagefilter")
-  q.ColumnSet <- ColumnSet("sdkmessagefilterid")
+  q.ColumnSet <- ColumnSet("sdkmessagefilterid", "sdkmessageid", "primaryobjecttypecode")
 
   let f = FilterExpression()
   f.AddCondition(ConditionExpression(@"sdkmessageid", ConditionOperator.Equal, sdkMessageId))
@@ -168,5 +171,16 @@ let sdkMessageFilter (primaryObjectType: string) (sdkMessageId: Guid) =
   | true -> ()
   | false -> 
     f.AddCondition(ConditionExpression(@"primaryobjecttypecode", ConditionOperator.Equal, primaryObjectType))
+  q.Criteria <- f
+  q 
+
+/// Create a query to get ALL SdkMessageFilters for a set of message IDs
+/// This is more efficient than querying each filter individually
+let sdkMessageFiltersByMessageIds (messageIds: Guid seq) = 
+  let q = QueryExpression("sdkmessagefilter")
+  q.ColumnSet <- ColumnSet("sdkmessagefilterid", "sdkmessageid", "primaryobjecttypecode")
+  
+  let f = FilterExpression()
+  f.AddCondition(ConditionExpression(@"sdkmessageid", ConditionOperator.In, messageIds |> Array.ofSeq |> Array.map box))
   q.Criteria <- f
   q 

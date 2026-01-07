@@ -76,8 +76,10 @@ let executeRequest proxy request =
 /// Perform requests as bulk
 let performAsBulk proxy (reqs: OrganizationRequest[]) = 
   reqs
-  |> Array.chunkBySize 200
-  |> Array.map (fun splitReqs ->
+  |> Array.chunkBySize 20
+  |> Array.mapi (fun idx splitReqs ->
+    if idx > 0 then
+      System.Threading.Thread.Sleep(1000) // 1 second delay between batches
     let req = ExecuteMultipleRequest()
     req.Requests <- OrganizationRequestCollection()
     req.Requests.AddRange(splitReqs)
@@ -94,7 +96,8 @@ let performAsBulk proxy (reqs: OrganizationRequest[]) =
 let performAsBulkResultHandling proxy faultHandler resultTransform  =
   performAsBulk proxy
   >> Array.map (fun resp -> 
-    faultHandler resp.Fault
+    if not (isNull resp.Fault) then
+      faultHandler resp.Fault
     resultTransform resp)
 
 

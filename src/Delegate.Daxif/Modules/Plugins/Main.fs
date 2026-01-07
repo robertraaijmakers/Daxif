@@ -28,6 +28,7 @@ let syncSolution proxyGen dllPath solutionName isolationMode dryRun =
     | Unchanged, _ -> log.Info "No changes detected to assembly"
     | Create, _ -> log.Info "Would create new assembly"
     | Update, _ -> log.Info "Would update assembly"
+    | UpdateWithRecreate, _ -> log.Info "Would delete and recreate assembly due to major/minor version change (all dependencies will be recreated)"
     printMergePartition "Types" localTypes regTypes Compare.pluginType log 
     printMergePartition "Steps" localSteps regSteps Compare.step log
     printMergePartition "Images" localImages regImages Compare.image log

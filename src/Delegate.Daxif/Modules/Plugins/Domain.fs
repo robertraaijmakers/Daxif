@@ -162,3 +162,10 @@ type AssemblyRegistration = {
       hash = e.GetAttributeValue<string>("sourcehash")
       version = e.GetAttributeValue<string>("version") |> Utility.parseVersion
     }
+
+/// Assembly operation types for synchronization
+type AssemblyOperation =
+  | Unchanged
+  | Update
+  | UpdateWithRecreate  // Major/minor version change requires delete and recreate
+  | Create

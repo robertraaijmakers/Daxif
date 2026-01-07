@@ -14,18 +14,31 @@ open CrmDataHelper
 
 
 /// Retrieve registered plugins from CRM related to a certain assembly and solution
+/// Note: Retrieves steps/APIs from solution scope but filters to only those belonging to this assembly's types
 let retrieveRegistered proxy solutionId assemblyId =
+  // Get all plugin types for THIS specific assembly only
   let typeMap =
     Query.pluginTypesByAssembly assemblyId 
     |> CrmDataHelper.retrieveAndMakeMap proxy getRecordName
 
   let validTypeGuids = typeMap |> Seq.map (fun kv -> kv.Value.Id) |> Set.ofSeq
 
+  // Get all steps from solution, but filter to only those belonging to types in THIS assembly
+  // This ensures we don't accidentally delete steps from other assemblies in the same solution
   let steps =
     Query.pluginStepsBySolution solutionId 
     |> CrmDataHelper.retrieveMultiple proxy
     |> Seq.cache
-    |> Seq.filter (fun e -> e.GetAttributeValue<EntityReference>("plugintypeid").Id |> validTypeGuids.Contains)
+    |> Seq.filter (fun e -> 
+        let plugintypeid = e.GetAttributeValue<EntityReference>("plugintypeid")
+        if plugintypeid = null then
+            let name = if e.Contains("name") then e.GetAttributeValue<string>("name") else e.Id.ToString()
+            ConsoleLogger.Global.Warn($"Plugin Step '{name}' (Id: {e.Id}) is missing the plugintypeid attribute and will be skipped.")
+            false
+        else
+            // Only include steps that belong to types from THIS assembly
+            validTypeGuids.Contains plugintypeid.Id
+    )
 
   let stepMap =
     steps |> makeMap getRecordName
@@ -39,21 +52,38 @@ let retrieveRegistered proxy solutionId assemblyId =
     |> Seq.map (fun s -> Query.pluginStepImagesByStep s.Id)
     |> CrmDataHelper.bulkRetrieveMultiple proxy
     |> Seq.choose (fun img -> 
-      let stepId = img.GetAttributeValue<EntityReference>("sdkmessageprocessingstepid").Id
-      match stepGuidMap.TryFind stepId with
-      | None      -> None
-      | Some step ->
-        let stepName =  getRecordName step
-        let imageName = getRecordName img
-        (sprintf "%s, %s" stepName imageName, img) |> Some
+      let stepIdRef = img.GetAttributeValue<EntityReference>("sdkmessageprocessingstepid")
+      if (stepIdRef = null) then
+        let name = if img.Contains("name") then img.GetAttributeValue<string>("name") else img.Id.ToString()
+        ConsoleLogger.Global.Warn($"Plugin Image '{name}' (Id: {img.Id}) is missing the sdkmessageprocessingstepid attribute and will be skipped.")
+        None
+      else
+        let stepId = stepIdRef.Id
+        match stepGuidMap.TryFind stepId with
+        | None      -> None
+        | Some step ->
+          let stepName =  getRecordName step
+          let imageName = getRecordName img
+          (sprintf "%s, %s" stepName imageName, img) |> Some
     )
     |> Map.ofSeq
 
+  // Get all custom APIs from solution, but filter to only those belonging to types in THIS assembly
+  // This ensures we don't accidentally delete custom APIs from other assemblies in the same solution
   let customApis = 
     Query.customAPIsBySolution solutionId 
     |> CrmDataHelper.retrieveMultiple proxy
     |> Seq.cache
-    |> Seq.filter (fun e -> e.GetAttributeValue<EntityReference>("plugintypeid").Id |> validTypeGuids.Contains)
+    |> Seq.filter (fun e -> 
+        let plugintypeid = e.GetAttributeValue<EntityReference>("plugintypeid")
+        if plugintypeid = null then
+          let name = if e.Contains("name") then e.GetAttributeValue<string>("name") else e.Id.ToString()
+          ConsoleLogger.Global.Warn($"Custom API '{name}' (Id: {e.Id}) is missing the plugintypeid attribute and will be skipped.")
+          false
+        else
+          // Only include custom APIs that belong to types from THIS assembly
+          validTypeGuids.Contains plugintypeid.Id
+        )
 
   let customApiMap =
     customApis |> makeMap (fun (x:Entity) -> x.GetAttributeValue<string>("name"))
@@ -139,33 +169,66 @@ let getRelevantMessagesAndFilters proxy (steps: Step seq) : Map<(EventOperation 
       )
     |> Map.ofArray
 
-  // Filters
-  let filterRequests = 
+  // Build a lookup of what filters we need
+  let neededFilters = 
     steps
     |> Seq.distinctBy (fun step -> step.eventOperation, step.logicalName)
     |> Seq.map (fun step -> 
       let messageId = messageMap.[step.eventOperation]
-
-      step.eventOperation, step.logicalName, messageId,
-      Query.sdkMessageFilter step.logicalName messageId |> makeRetrieveMultiple
+      (step.eventOperation, step.logicalName, messageId)
     )
     |> Array.ofSeq
 
+  ConsoleLogger.Global.Verbose "Retrieving SDK message filters for %d unique message/entity combinations" neededFilters.Length
+
+  // Retrieve ALL filters for these messages in one efficient query
+  let messageIds = neededFilters |> Array.map (fun (_, _, msgId) -> msgId) |> Array.distinct
+  let allFilters = 
+    if messageIds.Length = 0 then
+      Array.empty
+    else
+      Query.sdkMessageFiltersByMessageIds messageIds
+      |> CrmDataHelper.retrieveMultiple proxy
+      |> Seq.toArray
+
+  ConsoleLogger.Global.Verbose "Retrieved %d SDK message filters from CRM" allFilters.Length
+
+  // Build the map by matching filters to our needed combinations
   let finalMap =
-    filterRequests
-    |> Array.map (fun (_, _, _, q) -> q :> OrganizationRequest)
-    |> CrmDataHelper.performAsBulkResultHandling proxy raiseExceptionIfFault
-      (fun resp -> 
-        let result = (resp.Response :?> RetrieveMultipleResponse)
-        let filter = 
-            match result.EntityCollection.Entities |> Seq.tryHead with
-            | Some f -> f
-            | None ->
-                let (op, logicalName, _, _) = filterRequests.[resp.RequestIndex]
-                failwithf "SdkMessageFilter with for operation '%s' and entity '%s' not found." op logicalName
-        let (op, logicalName, messageId, _) = filterRequests.[resp.RequestIndex]
-        (op, logicalName), (messageId, filter.Id)
-      )
+    neededFilters
+    |> Array.choose (fun (op, logicalName, messageId) ->
+        // Find matching filter
+        let matchingFilter = 
+          allFilters 
+          |> Array.tryFind (fun f ->
+              let filterMessageId = f.GetAttributeValue<EntityReference>("sdkmessageid").Id
+              let filterEntityCode = 
+                if f.Contains("primaryobjecttypecode") 
+                then f.GetAttributeValue<string>("primaryobjecttypecode")
+                else ""
+              
+              // Match message ID first
+              if filterMessageId <> messageId then false
+              else
+                // For entity-agnostic operations (Associate, Disassociate, etc.)
+                // Match when both are empty OR when filter is "none" and we're looking for empty
+                if String.IsNullOrEmpty(logicalName) then
+                  String.IsNullOrEmpty(filterEntityCode) || 
+                  String.Equals(filterEntityCode, "none", StringComparison.OrdinalIgnoreCase)
+                // For entity-specific operations, match the entity code
+                else
+                  String.Equals(logicalName, filterEntityCode, StringComparison.OrdinalIgnoreCase)
+          )
+        
+        match matchingFilter with
+        | Some f -> 
+            Some ((op, logicalName), (messageId, f.Id))
+        | None ->
+            // Log but don't fail - let the validation in createSteps handle it
+            let entityMsg = if String.IsNullOrEmpty(logicalName) then "any entity" else sprintf "entity '%s'" logicalName
+            ConsoleLogger.Global.Warn "SdkMessageFilter not found for operation '%s' on %s - this step cannot be registered" op entityMsg
+            None
+    )
     |> Map.ofArray
     
   finalMap
@@ -197,5 +260,12 @@ let getStepMap proxy (steps: Map<string, Entity>) =
     |> Map.ofArray
 
   steps
+  |> Map.filter (fun name step -> 
+      let sdkMessageId = step.GetAttributeValue<EntityReference>("sdkmessageid")
+      if sdkMessageId <> null then true
+      else 
+        ConsoleLogger.Global.Warn($"Plugin Step '{name}' (Id: {step.Id}) is missing the sdkmessageid attribute and will be skipped when building step map.")
+        false
+      )
   |> Map.map (fun _ step -> 
     step.Id, eventOpMap.[step.GetAttributeValue<EntityReference>("sdkmessageid").Id])
