@@ -2,6 +2,8 @@ module DG.Daxif.Modules.Solution.Main
 
 open System
 open Microsoft.Xrm.Sdk
+open Microsoft.Crm.Sdk.Messages
+open System.IO
 open DG.Daxif
 open DG.Daxif.Common
 open DG.Daxif.Common.Utility
@@ -42,3 +44,56 @@ let enablePluginSteps proxyGen solutionName (enable: bool option) (logLevel: Log
   
   let msg' = if enable then "enabled" else "disabled"
   log.Info @"The solution plugins were successfully %s" msg'
+
+let importSolution proxyGen (path: string) (publish: bool) (overwrite: bool) (skipDependencies: bool) (convertToManaged: bool) (logLevel: LogLevel option) =
+  let logLevel = logLevel ?| LogLevel.Verbose
+  let log = ConsoleLogger logLevel
+
+  log.Info @"Importing solution: %s" path
+  log.Verbose @"Publish: %b" publish
+  log.Verbose @"Overwrite Unmanaged: %b" overwrite
+  log.Verbose @"Skip Dependencies: %b" skipDependencies
+  log.Verbose @"Convert To Managed: %b" convertToManaged
+
+  let service : IOrganizationService = proxyGen()
+  log.WriteLine(LogLevel.Verbose, @"Service instantiated")
+
+  try
+    let data = File.ReadAllBytes path
+    
+    let req = new ImportSolutionRequest()
+    req.CustomizationFile <- data
+    req.PublishWorkflows <- publish
+    req.OverwriteUnmanagedCustomizations <- overwrite
+    req.SkipProductUpdateDependencies <- skipDependencies
+    req.ConvertToManaged <- convertToManaged
+    
+    service.Execute(req) |> ignore
+    log.Info @"Solution imported successfully"
+
+    if publish then
+      let req = new PublishAllXmlRequest()
+      service.Execute(req) |> ignore
+      log.Info @"All customizations published"
+
+  with ex ->
+    log.WriteLine(LogLevel.Error, sprintf "Failed to import solution: %s" ex.Message)
+    raise ex
+
+let publishAll proxyGen (logLevel: LogLevel option) =
+  let logLevel = logLevel ?| LogLevel.Verbose
+  let log = ConsoleLogger logLevel
+
+  log.Info @"Publishing all customizations"
+
+  let service : IOrganizationService = proxyGen()
+  log.WriteLine(LogLevel.Verbose, @"Service instantiated")
+
+  try
+    let req = new PublishAllXmlRequest()
+    service.Execute(req) |> ignore
+    log.Info @"All customizations published"
+
+  with ex ->
+    log.WriteLine(LogLevel.Error, sprintf "Failed to publish all customizations: %s" ex.Message)
+    raise ex

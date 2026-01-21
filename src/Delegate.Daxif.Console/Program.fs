@@ -5,7 +5,7 @@ open DG.Daxif
 let printUsage () =
     printfn """
 ╔═══════════════════════════════════════════════════════════════════╗
-║                       DAXIF CLI for .NET 8.0                      ║
+║                       DAXIF CLI for .NET 10.0                     ║
 ║                  Cross-Platform Dataverse Automation              ║
 ╚═══════════════════════════════════════════════════════════════════╝
 
@@ -15,8 +15,17 @@ USAGE:
 COMMANDS:
     plugin sync      Sync plugins to Dataverse
     webresource sync Sync web resources to Dataverse
+    solution import  Import solution to Dataverse
+    solution publish Publish all customizations
     test-connection  Test connection to Dataverse
     help             Show this help message
+
+SOLUTION IMPORT OPTIONS:
+    --zip <path>            Path to solution zip file (Required)
+    --publish               Publish workflows after import
+    --overwrite             Overwrite unmanaged customizations
+    --skip-dependencies     Skip product update dependencies
+    --convert-to-managed    Convert to managed solution
 
 AUTHENTICATION:
     Set these environment variables for authentication:
@@ -49,7 +58,11 @@ EXAMPLES:
     # Sync web resources
     daxif webresource sync --folder ./WebResources --solution MySolution
 
-For more information, visit: https://github.com/delegateas/Daxif
+    # Import solution
+    daxif solution import --zip ./MySolution.zip --publish --overwrite
+
+    # Publish all customizations
+    daxif solution publish
 """
 
 let getEnvVar name defaultValue =
@@ -239,6 +252,80 @@ let syncWebResources args =
     printfn "=========================================="
     0
 
+let importSolution args =
+    let mutable zipPath = ""
+    let mutable publish = false
+    let mutable overwrite = false
+    let mutable skipDependencies = false
+    let mutable convertToManaged = false
+    let mutable i = 0
+    
+    while i < Array.length args do
+        match args.[i] with
+        | "--zip" | "-z" ->
+            if i + 1 < Array.length args then
+                zipPath <- args.[i + 1]
+                i <- i + 2
+            else
+                printfn "ERROR: --zip requires a value"
+                exit 1
+        | "--publish" | "-p" ->
+            publish <- true
+            i <- i + 1
+        | "--overwrite" ->
+            overwrite <- true
+            i <- i + 1
+        | "--skip-dependencies" ->
+            skipDependencies <- true
+            i <- i + 1
+        | "--convert-to-managed" ->
+            convertToManaged <- true
+            i <- i + 1
+        | _ ->
+            printfn "ERROR: Unknown option '%s'" args.[i]
+            exit 1
+    
+    if String.IsNullOrEmpty(zipPath) then
+        printfn "ERROR: --zip is required"
+        printfn "Usage: daxif solution import --zip <path> [--publish] [--overwrite] [--skip-dependencies] [--convert-to-managed]"
+        exit 1
+    
+    if not (IO.File.Exists(zipPath)) then
+        printfn "ERROR: Zip file not found: %s" zipPath
+        exit 1
+    
+    printfn "\n=========================================="
+    printfn "Importing Solution"
+    printfn "=========================================="
+    printfn "Zip: %s" zipPath
+    printfn "Publish: %b" publish
+    printfn "Overwrite: %b" overwrite
+    printfn "Skip Dependencies: %b" skipDependencies
+    printfn "Convert To Managed: %b" convertToManaged
+    
+    use client = createServiceClient()
+    let proxyGen = fun () -> client :> Microsoft.Xrm.Sdk.IOrganizationService
+    
+    DG.Daxif.Modules.Solution.Main.importSolution proxyGen zipPath publish overwrite skipDependencies convertToManaged None
+    
+    printfn "\n✓ Solution import completed!"
+    printfn "=========================================="
+    0
+
+let publishSolutions () =
+    printfn "\n=========================================="
+    printfn "Publishing All Customizations"
+    printfn "=========================================="
+    
+    use client = createServiceClient()
+    let proxyGen = fun () -> client :> Microsoft.Xrm.Sdk.IOrganizationService
+    
+    DG.Daxif.Modules.Solution.Main.publishAll proxyGen None
+    
+    printfn "\n✓ Publish completed!"
+    printfn "=========================================="
+    0
+
 [<EntryPoint>]
 let main args =
     try
@@ -266,6 +353,17 @@ let main args =
         | _ when args.Length >= 2 && args.[0] = "webresource" && args.[1] = "sync" ->
             syncWebResources args.[2..]
         
+        | [| "solution"; "import" |] ->
+            printfn "ERROR: Missing required arguments"
+            printfn "Usage: daxif solution import --zip <path> [--publish] [--overwrite] [--skip-dependencies] [--convert-to-managed]"
+            1
+
+        | _ when args.Length >= 2 && args.[0] = "solution" && args.[1] = "import" ->
+            importSolution args.[2..]
+
+        | [| "solution"; "publish" |] ->
+            publishSolutions ()
+
         | _ ->
             printfn "ERROR: Unknown command '%s'" (String.Join(" ", args))
             printfn "Run 'daxif help' for usage information."
