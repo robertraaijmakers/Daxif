@@ -1,0 +1,62 @@
+using XrmPackager.Core.Domain;
+using XrmPackager.Core.Generation.Common;
+using XrmPackager.Core.Generation.Mappers;
+
+namespace XrmPackager.Core.Generation.Generators;
+
+public class SingleFileGenerator
+    : BaseFileGenerator,
+        IFileGenerator<(
+            IReadOnlyList<TableModel> Tables,
+            IReadOnlyDictionary<string, IReadOnlySet<ColumnSignature>> InterfaceColumns,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> TableToInterfaces,
+            IReadOnlyList<CustomApiModel> CustomApis
+        )>
+{
+    public IEnumerable<GeneratedFile> Generate(
+        (
+            IReadOnlyList<TableModel> Tables,
+            IReadOnlyDictionary<string, IReadOnlySet<ColumnSignature>> InterfaceColumns,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> TableToInterfaces,
+            IReadOnlyList<CustomApiModel> CustomApis
+        ) input,
+        GenerationContext context
+    )
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return GenerateInternal(
+            input.Tables,
+            input.InterfaceColumns,
+            input.TableToInterfaces,
+            input.CustomApis,
+            context
+        );
+    }
+
+    private static IEnumerable<GeneratedFile> GenerateInternal(
+        IReadOnlyList<TableModel> tablesList,
+        IReadOnlyDictionary<string, IReadOnlySet<ColumnSignature>> interfaceColumns,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> tableToInterfaces,
+        IReadOnlyList<CustomApiModel> customApis,
+        GenerationContext context
+    )
+    {
+        ValidateContext(context);
+
+        var templateModel = SingleFileMapper.MapToTemplateModel(
+            tablesList,
+            interfaceColumns,
+            tableToInterfaces,
+            customApis,
+            context
+        );
+        var templateName = "SingleFile.scriban-cs";
+        var template = context.Templates.GetTemplate(templateName);
+
+        // Use the same template context creation as other generators
+        var templateContext = CreateTemplateContext(templateModel, context.Templates);
+        var content = template.Render(templateContext);
+
+        yield return new GeneratedFile($"{context.ServiceContextName}.cs", content);
+    }
+}

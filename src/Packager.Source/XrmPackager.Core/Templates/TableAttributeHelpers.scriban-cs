@@ -1,0 +1,7 @@
+using System.Linq.Expressions;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+
+namespace {{ namespace }};
+
+{{ include "Body/TableAttributeHelpers.scriban-cs" }}

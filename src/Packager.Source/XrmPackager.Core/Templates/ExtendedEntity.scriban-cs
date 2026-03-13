@@ -1,0 +1,8 @@
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Client;
+
+[assembly: ProxyTypesAssembly]
+
+namespace {{ namespace }};
+
+{{ include "Body/ExtendedEntity.scriban-cs" }}

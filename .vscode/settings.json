@@ -1,0 +1,35 @@
+{
+    // C# formatting with CSharpier
+    "[csharp]": {
+        "editor.defaultFormatter": "csharpier.csharpier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        }
+    },
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features",
+        "editor.formatOnSave": true
+    },
+    "[jsonc]": {
+        "editor.defaultFormatter": "vscode.json-language-features",
+        "editor.formatOnSave": true
+    },
+    "[xml]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit"
+        }
+    },
+    // General editor settings
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    // Feature files
+    "explorer.fileNesting.enabled": true,
+    "files.exclude": { // excludes compilation result
+        "**/obj/": true,
+        "**/bin/": true,
+    },
+}

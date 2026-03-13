@@ -1,0 +1,79 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Runtime.Serialization;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Client;
+using Microsoft.Xrm.Sdk.Query;
+
+[assembly: ProxyTypesAssembly]
+
+namespace {{namespace}};
+
+// ============================================================================
+// ENTITY PROXY CLASSES
+// ============================================================================
+{{~ for table in tables | array.sort "SchemaName" ~}}
+
+{{ include "Body/EntityClass.scriban-cs" }}
+{{~ end ~}}
+
+// ============================================================================
+// INTERSECTION INTERFACES
+// ============================================================================
+{{~ for interface in interfaces | array.sort "Name" ~}}
+
+{{ include "Body/IntersectionInterface.scriban-cs" }}
+{{~ end ~}}
+
+// ============================================================================
+// ENUM OPTION SETS
+// ============================================================================
+{{~ for optionset in optionsets | array.sort "Name" ~}}
+
+{{ include "Body/EnumOptionset.scriban-cs" }}
+{{~ end ~}}
+
+{{~ if customApis && customApis.size > 0 ~}}
+// ============================================================================
+// CUSTOM API REQUEST & RESPONSES
+// ============================================================================
+{{~ for api in customApis | array.sort "sanitized_unique_name" ~}}
+
+{{ include "Body/CustomApiRequest.scriban-cs" }}
+
+{{ include "Body/CustomApiResponse.scriban-cs" }}
+{{~ end ~}}
+{{~ end ~}}
+
+// ============================================================================
+// ATTRIBUTE CLASSES
+// ============================================================================
+
+{{ include "Body/DataversePropertyMetadataAttribute.scriban-cs" }}
+
+{{ include "Body/OptionSetMetadataAttribute.scriban-cs" }}
+
+{{ include "Body/RelationshipMetadataAttribute.scriban-cs" }}
+
+// ============================================================================
+// EXTENDED ENTITY BASE CLASS
+// ============================================================================
+
+{{ include "Body/ExtendedEntity.scriban-cs" }}
+
+// ============================================================================
+// TABLE ATTRIBUTE HELPERS
+// ============================================================================
+
+{{ include "Body/TableAttributeHelpers.scriban-cs" }}
+
+// ============================================================================
+// XRM SERVICE CONTEXT
+// ============================================================================
+
+{{ include "Body/XrmServiceContext.scriban-cs" }}

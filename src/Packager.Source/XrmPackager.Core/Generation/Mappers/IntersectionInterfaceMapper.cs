@@ -1,0 +1,45 @@
+using XrmPackager.Core.Domain;
+using XrmPackager.Core.Generation.Common;
+using XrmPackager.Core.Generation.Utilities;
+
+namespace XrmPackager.Core.Generation.Mappers;
+
+public static class IntersectionInterfaceMapper
+{
+    public static object MapToTemplateModel(
+        (
+            string InterfaceName,
+            IEnumerable<ColumnSignature> Columns,
+            IList<TableModel> Tables
+        ) input,
+        GenerationContext context
+    )
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(input.InterfaceName);
+
+        var (interfaceName, colSigs, tables) = input;
+        var columns = colSigs
+            .Select(sig =>
+                tables
+                    .SelectMany(t => t.Columns)
+                    .FirstOrDefault(c =>
+                        c.SchemaName == sig.SchemaName && c.TypeName == sig.TypeName
+                    )
+            )
+            .Where(c => c != null)
+            .Cast<ColumnModel>();
+
+        var sanitizedInterfaceName = GenerationUtilities.SanitizeName(interfaceName);
+
+        var columnData = columns.Select(col => new
+        {
+            SchemaName = GenerationUtilities.SanitizeName(col.SchemaName),
+            col.DisplayName,
+            col.Description,
+            TypeSignature = GenerationUtilities.GetTypeSignature(col),
+        });
+
+        return new { Name = sanitizedInterfaceName, Columns = columnData };
+    }
+}

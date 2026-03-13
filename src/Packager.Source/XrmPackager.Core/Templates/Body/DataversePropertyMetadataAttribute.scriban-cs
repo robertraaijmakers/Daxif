@@ -1,0 +1,42 @@
+[System.CodeDom.Compiler.GeneratedCode("DataverseProxyGenerator", "{{version}}")]
+public enum DataversePropertyKind
+{
+    PrimaryId,
+    String,
+    Memo,
+    Integer,
+    BigInt,
+    Boolean,
+    DateTime,
+    Decimal,
+    Double,
+    Money,
+    OptionSet,
+    MultiSelectOptionSet,
+    Lookup,
+    PartyList,
+    File,
+    Image,
+    UniqueIdentifier,
+    BooleanManagedProperty,
+    ManagedProperty,
+}
+
+[System.CodeDom.Compiler.GeneratedCode("DataverseProxyGenerator", "{{version}}")]
+[System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false)]
+public sealed class DataversePropertyMetadataAttribute : System.Attribute
+{
+    public DataversePropertyKind Kind { get; }
+    public System.Type SdkType { get; }
+    public string? OptionSetName { get; }
+
+    public DataversePropertyMetadataAttribute(
+        DataversePropertyKind kind,
+        System.Type sdkType,
+        string? optionSetName = null)
+    {
+        Kind = kind;
+        SdkType = sdkType;
+        OptionSetName = optionSetName;
+    }
+}

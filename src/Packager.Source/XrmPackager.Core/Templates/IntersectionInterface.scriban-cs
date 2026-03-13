@@ -1,0 +1,5 @@
+using Microsoft.Xrm.Sdk;
+
+namespace {{namespace}};
+
+{{ include "Body/IntersectionInterface.scriban-cs" }}
