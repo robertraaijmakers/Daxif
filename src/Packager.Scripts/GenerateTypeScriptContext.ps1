@@ -53,10 +53,10 @@ if ($AdditionalArguments) {
     $xrmPackagerArguments += $AdditionalArguments
 }
 
-Write-Host "Generating XrmDefinitelyTyped definitions..." -ForegroundColor Cyan
+Write-Host "Generating TypeScript definitions..." -ForegroundColor Cyan
 Write-Host "Environment: $EnvironmentName" -ForegroundColor Gray
 Write-Host "Output: $($config.Path.typescriptOutput)" -ForegroundColor Gray
 
 Invoke-XrmPackager -Arguments $xrmPackagerArguments
 
-Write-Host "XrmDefinitelyTyped generation completed." -ForegroundColor Green
+Write-Host "TypeScript definitions generation completed." -ForegroundColor Green

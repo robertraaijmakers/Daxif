@@ -16,6 +16,8 @@ public class FileSystemOutputWriter : IOutputWriter
     {
         ArgumentNullException.ThrowIfNull(files);
 
+        var filesList = files.ToList();
+
         if (Directory.Exists(outputDirectory))
         {
             foreach (var file in Directory.GetFiles(outputDirectory))
@@ -33,15 +35,17 @@ public class FileSystemOutputWriter : IOutputWriter
             Directory.CreateDirectory(outputDirectory);
         }
 
-        foreach (var file in files)
+        var writtenFiles = new List<string>(filesList.Count);
+
+        foreach (var file in filesList)
         {
             var filePath = Path.Combine(outputDirectory, file.Filename);
             var directoryPath = Path.GetDirectoryName(filePath) ?? throw new InvalidOperationException("Unable to determine directory path for file creation.");
             Directory.CreateDirectory(directoryPath);
-
-            // Apply formatting to the content
-            var formattedContent = _formatter.Format(file.Content);
-            File.WriteAllText(filePath, formattedContent);
+            File.WriteAllText(filePath, file.Content);
+            writtenFiles.Add(filePath);
         }
+
+        _formatter.FormatFiles(writtenFiles);
     }
 }

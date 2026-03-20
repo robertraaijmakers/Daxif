@@ -1,5 +1,5 @@
 ##
-# WebResourceSyncDev - Sync web resources to Development environment
+# SynchronizeWebresources - Sync web resources to Development environment
 # Uses XrmPackager CLI wrapper
 ##
 

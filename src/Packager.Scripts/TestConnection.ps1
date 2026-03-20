@@ -9,7 +9,7 @@ param(
 )
 
 try {
-    $config = Import-Module $PSScriptRoot\_InitXrmPackager.ps1 -ArgumentList $EnvironmentName -force
+    Import-Module $PSScriptRoot\_InitXrmPackager.ps1 -ArgumentList $EnvironmentName -force
 
     Write-Host ""
 
@@ -18,8 +18,8 @@ try {
 
     Write-Host "XrmPackager is ready to use!" -ForegroundColor Green
     Write-Host "You can now run:" -ForegroundColor White
-    Write-Host "  - PluginSyncDev.ps1 to sync plugins" -ForegroundColor Gray
-    Write-Host "  - WebResourceSyncDev.ps1 to sync web resources" -ForegroundColor Gray
+    Write-Host "  - SynchronizePlugins.ps1 to sync plugins" -ForegroundColor Gray
+    Write-Host "  - SynchronizeWebresources.ps1 to sync web resources" -ForegroundColor Gray
 
 } catch {
     Write-Host "========================================" -ForegroundColor Cyan

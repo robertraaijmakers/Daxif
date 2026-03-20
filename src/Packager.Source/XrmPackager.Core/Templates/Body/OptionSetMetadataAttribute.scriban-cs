@@ -8,19 +8,10 @@ public class OptionSetMetadataAttribute : Attribute
     public string Color { get; set; }
     public int Lcid { get; set; }
 
-    public OptionSetMetadataAttribute(
-        string name,
-        int lcid = 1033,
-        string description = null,
-        string color = null)
+    public OptionSetMetadataAttribute(string name, int lcid = 1033, string description = null, string color = null)
         : this(name, int.MinValue, lcid, description, color) { }
 
-    public OptionSetMetadataAttribute(
-        string name,
-        int index,
-        int lcid,
-        string description = null,
-        string color = null)
+    public OptionSetMetadataAttribute(string name, int index, int lcid, string description = null, string color = null)
     {
         Name = name;
         Index = index;

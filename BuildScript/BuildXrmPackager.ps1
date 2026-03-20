@@ -108,29 +108,51 @@ Get-ChildItem -Path $sourceScriptsFolder -Filter "*.ps1" -File | ForEach-Object 
     Copy-Item -Path $_.FullName -Destination (Join-Path $buildRoot $_.Name) -Force
 }
 
-$requiredFiles = @(
-    "xrmpackager.dll",
-    "xrmpackager.runtimeconfig.json",
-    "xrmpackager.deps.json"
-)
-
-$missingFiles = @()
-foreach ($file in $requiredFiles) {
-    $fullPath = Join-Path $publishFolder $file
-    if (-not (Test-Path $fullPath)) {
-        $missingFiles += $file
+Write-Host "Copying .dotnet-tools.json to build output..." -ForegroundColor Yellow
+$toolsManifest = Join-Path $repoRoot ".config/dotnet-tools.json"
+if (-not (Test-Path $toolsManifest)) {
+    $legacyManifest = Join-Path $repoRoot ".dotnet-tools.json"
+    if (Test-Path $legacyManifest) {
+        $toolsManifest = $legacyManifest
     }
 }
 
-if ($missingFiles.Count -gt 0) {
-    throw "Publish output is missing required files: $($missingFiles -join ', ')"
+if (Test-Path $toolsManifest) {
+    $buildConfigFolder = Join-Path $buildRoot ".config"
+    $publishConfigFolder = Join-Path $publishFolder ".config"
+    New-Item -ItemType Directory -Path $buildConfigFolder -Force | Out-Null
+    New-Item -ItemType Directory -Path $publishConfigFolder -Force | Out-Null
+
+    Copy-Item -Path $toolsManifest -Destination (Join-Path $buildConfigFolder "dotnet-tools.json") -Force
+    Copy-Item -Path $toolsManifest -Destination (Join-Path $publishConfigFolder "dotnet-tools.json") -Force
+} else {
+    Write-Host "Warning: dotnet tool manifest not found in repository root" -ForegroundColor Yellow
+}
+
+$requiredPublishFiles = @(
+    "xrmpackager.dll",
+    "xrmpackager.runtimeconfig.json",
+    "xrmpackager.deps.json",
+    ".config/dotnet-tools.json"
+)
+
+$missingPublishFiles = @()
+foreach ($file in $requiredPublishFiles) {
+    $fullPath = Join-Path $publishFolder $file
+    if (-not (Test-Path $fullPath)) {
+        $missingPublishFiles += $file
+    }
+}
+
+if ($missingPublishFiles.Count -gt 0) {
+    throw "Publish output is missing required files: $($missingPublishFiles -join ', ')"
 }
 
 Write-Host ""
 Write-Host "Build and publish completed successfully." -ForegroundColor Green
 Write-Host ""
 Write-Host "Published files:" -ForegroundColor Cyan
-Get-ChildItem -Path $publishFolder -File | Sort-Object Name | ForEach-Object {
+Get-ChildItem -Path $publishFolder -File -Force | Sort-Object Name | ForEach-Object {
     Write-Host "  $($_.Name)" -ForegroundColor Gray
 }
 

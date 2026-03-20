@@ -1,21 +1,21 @@
-# ControlSyncDev - Build and sync PCF controls solution to Development environment
-# This script builds and deploys the Controls solution using XrmPackager
+# SynchronizeControls - Build and sync PCF controls solution to Development environment
+# This script builds and deploys the bol_OnePRMControls solution using XrmPackager
 
 param(
     [Alias("Environment")]
     [string]$EnvironmentName = "Dev"
 )
 
-$config = Import-Module $PSScriptRoot\_InitXrmPackager.ps1 -ArgumentList $EnvironmentName -force
+Import-Module $PSScriptRoot\_InitXrmPackager.ps1 -ArgumentList $EnvironmentName -force
 
 Write-Host "Syncing PCF Controls Solution..." -ForegroundColor Cyan
-Write-Host "Solution: tmp_OnePRMControls" -ForegroundColor Gray
+Write-Host "Solution: bol_OnePRMControls" -ForegroundColor Gray
 Write-Host "Environment: $EnvironmentName" -ForegroundColor Gray
 Write-Host ""
 
 try {
     # Path to solution zip (use cross-platform path joining)
-    $solutionZip = Join-Path $PSScriptRoot ".." "controls" "tmp_OnePRMControls" "bin" "Debug" "tmp_OnePRMControls.zip"
+    $solutionZip = Join-Path $PSScriptRoot ".." "controls" "bol_OnePRMControls" "bin" "Debug" "bol_OnePRMControls.zip"
     $solutionZip = Resolve-Path $solutionZip -ErrorAction SilentlyContinue
 
     if (-not $solutionZip -or -not (Test-Path $solutionZip)) {

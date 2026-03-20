@@ -1,5 +1,5 @@
 ##
-# PluginSyncDev - Sync plugins to Development environment
+# SynchronizePlugins - Sync plugins to Development environment
 # Uses XrmPackager CLI wrapper
 ##
 

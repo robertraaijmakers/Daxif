@@ -13,4 +13,9 @@ public class NoOpFormatter : ICodeFormatter
     {
         return code;
     }
+
+    public void FormatFiles(IEnumerable<string> filePaths)
+    {
+        ArgumentNullException.ThrowIfNull(filePaths);
+    }
 }

@@ -80,10 +80,10 @@ if ($AdditionalArguments) {
     $xrmPackagerArguments += $AdditionalArguments
 }
 
-Write-Host "Generating Plugin Definitions..." -ForegroundColor Cyan
+Write-Host "Generating Xrm Context..." -ForegroundColor Cyan
 Write-Host "Environment: $EnvironmentName" -ForegroundColor Gray
 Write-Host "Output: $contextOutputPath" -ForegroundColor Gray
 
 Invoke-XrmPackager -Arguments $xrmPackagerArguments
 
-Write-Host "Plugin Definitions generation completed." -ForegroundColor Green
+Write-Host "Xrm Context generation completed." -ForegroundColor Green
