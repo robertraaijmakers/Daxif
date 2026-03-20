@@ -1,4 +1,8 @@
+using System;
+using System.Linq;
 using System.Linq.Expressions;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 
 namespace {{ namespace }};
 

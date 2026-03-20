@@ -1,6 +1,6 @@
 [System.CodeDom.Compiler.GeneratedCode("DataverseProxyGenerator", "{{version}}")]
-[AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
-public class OptionSetMetadataAttribute : Attribute
+[System.AttributeUsage(System.AttributeTargets.Field, AllowMultiple = true)]
+public class OptionSetMetadataAttribute : System.Attribute
 {
     public string Name { get; private set; }
     public int Index { get; set; }

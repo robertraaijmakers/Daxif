@@ -30,10 +30,7 @@ public sealed class DataversePropertyMetadataAttribute : System.Attribute
     public System.Type SdkType { get; }
     public string? OptionSetName { get; }
 
-    public DataversePropertyMetadataAttribute(
-        DataversePropertyKind kind,
-        System.Type sdkType,
-        string? optionSetName = null)
+    public DataversePropertyMetadataAttribute(DataversePropertyKind kind, System.Type sdkType, string? optionSetName = null)
     {
         Kind = kind;
         SdkType = sdkType;

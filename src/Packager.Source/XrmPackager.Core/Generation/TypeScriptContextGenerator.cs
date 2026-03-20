@@ -26,18 +26,14 @@ public sealed class TypeScriptContextGenerator
             : outputPath;
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            throw new InvalidOperationException(
-                $"Unable to determine output directory for '{options.OutputPath}'."
-            );
+            throw new InvalidOperationException($"Unable to determine output directory for '{options.OutputPath}'.");
         }
 
         Directory.CreateDirectory(outputDirectory);
         ClearExistingDeclarationFiles(outputDirectory);
 
         var fetchConfig = new XrmFetchConfig(
-            string.IsNullOrWhiteSpace(options.SolutionName)
-                ? Array.Empty<string>()
-                : new[] { options.SolutionName },
+            string.IsNullOrWhiteSpace(options.SolutionName) ? Array.Empty<string>() : new[] { options.SolutionName },
             options.Entities,
             string.Empty,
             new Dictionary<string, string>(StringComparer.InvariantCulture)
@@ -45,20 +41,11 @@ public sealed class TypeScriptContextGenerator
 
         var metadataFactory = new DataverseMetadataSourceFactory(client);
         var fetcher = metadataFactory.CreateFetcher(MetadataSourceType.Dataverse, fetchConfig);
-        var tables = fetcher
-            .FetchMetadataAsync()
-            .GetAwaiter()
-            .GetResult()
-            .OrderBy(t => t.SchemaName, StringComparer.InvariantCulture)
-            .ToList();
+        var tables = fetcher.FetchMetadataAsync().GetAwaiter().GetResult().OrderBy(t => t.SchemaName, StringComparer.InvariantCulture).ToList();
 
         if (options.OneFile)
         {
-            var oneFileModel = new
-            {
-                Namespace = options.Namespace,
-                Tables = tables.Select(MapTableForTemplate).ToList(),
-            };
+            var oneFileModel = new { Namespace = options.Namespace, Tables = tables.Select(MapTableForTemplate).ToList() };
 
             var source = RenderTemplate("TypeScriptContext.scriban-ts", oneFileModel);
             File.WriteAllText(outputPath, source);
@@ -68,26 +55,14 @@ public sealed class TypeScriptContextGenerator
 
             if (options.EmitLegacyResources)
             {
-                TypeScriptLegacyArtifactGenerator.Generate(
-                    outputDirectory,
-                    client,
-                    options,
-                    tables,
-                    _logger
-                );
+                TypeScriptLegacyArtifactGenerator.Generate(outputDirectory, client, options, tables, _logger);
             }
             return;
         }
 
         if (options.EmitLegacyResources)
         {
-            TypeScriptLegacyArtifactGenerator.Generate(
-                outputDirectory,
-                client,
-                options,
-                tables,
-                _logger
-            );
+            TypeScriptLegacyArtifactGenerator.Generate(outputDirectory, client, options, tables, _logger);
         }
         else
         {
@@ -98,11 +73,7 @@ public sealed class TypeScriptContextGenerator
         _logger.Info($"Tables included: {tables.Count}");
     }
 
-    private void GenerateMultiFileDefinitions(
-        string outputDirectory,
-        string namespaceName,
-        IReadOnlyList<TableModel> tables
-    )
+    private void GenerateMultiFileDefinitions(string outputDirectory, string namespaceName, IReadOnlyList<TableModel> tables)
     {
         var entities = new List<(string Folder, string Name)>();
 
@@ -124,10 +95,7 @@ public sealed class TypeScriptContextGenerator
             entities.Add((safeName, safeName));
         }
 
-        var rootIndexModel = new
-        {
-            Entities = entities.Select(e => new { Folder = e.Folder, Name = e.Name }).ToList(),
-        };
+        var rootIndexModel = new { Entities = entities.Select(e => new { Folder = e.Folder, Name = e.Name }).ToList() };
 
         var rootIndexContent = RenderTemplate("TypeScriptIndex.scriban-ts", rootIndexModel);
         File.WriteAllText(Path.Combine(outputDirectory, "index.d.ts"), rootIndexContent);
@@ -139,6 +107,7 @@ public sealed class TypeScriptContextGenerator
         var context = new Scriban.TemplateContext(StringComparer.InvariantCulture)
         {
             LoopLimit = 0,
+            LimitToString = int.MaxValue,
             MemberRenamer = member => member.Name,
         };
 
@@ -174,8 +143,7 @@ public sealed class TypeScriptContextGenerator
         return column switch
         {
             StringColumnModel or MemoColumnModel => "string | null",
-            IntegerColumnModel or BigIntColumnModel or DecimalColumnModel or DoubleColumnModel =>
-                "number | null",
+            IntegerColumnModel or BigIntColumnModel or DecimalColumnModel or DoubleColumnModel => "number | null",
             MoneyColumnModel => "number | null",
             BooleanColumnModel or BooleanManagedColumnModel => "boolean | null",
             DateTimeColumnModel => "Date | null",
@@ -230,13 +198,7 @@ public sealed class TypeScriptContextGenerator
             return;
         }
 
-        foreach (
-            var file in Directory.EnumerateFiles(
-                outputDirectory,
-                "*.d.ts",
-                SearchOption.AllDirectories
-            )
-        )
+        foreach (var file in Directory.EnumerateFiles(outputDirectory, "*.d.ts", SearchOption.AllDirectories))
         {
             File.Delete(file);
         }

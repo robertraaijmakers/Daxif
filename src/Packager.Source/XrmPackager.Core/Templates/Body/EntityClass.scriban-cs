@@ -1,8 +1,8 @@
 /// <summary>
 {{~ for line in table.Description | string.split '\n' ~}}
-/// <para>{{ line | string.strip }}</para>
+/// <para>{{ line | string.strip | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
 {{~ end ~}}
-/// <para>Display Name: {{ table.DisplayName }}</para>
+/// <para>Display Name: {{ table.DisplayName | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
 /// </summary>
 [System.CodeDom.Compiler.GeneratedCode("DataverseProxyGenerator", "{{version}}")]
 [EntityLogicalName("{{table.LogicalName}}")]
@@ -17,20 +17,20 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     public const string PrimaryNameLogicalName = "{{ table.PrimaryNameAttribute }}";
     public const string PrimaryIdLogicalName = "{{ table.PrimaryIdAttribute }}";
 
-    public {{table.SchemaName}}() : base(EntityLogicalName) { }
-    public {{table.SchemaName}}(Guid id) : base(EntityLogicalName, id) { }
+    public {{table.SchemaName}}()
+        : base(EntityLogicalName) { }
+
+    public {{table.SchemaName}}(Guid id)
+        : base(EntityLogicalName, id) { }
 
     private string DebuggerDisplay => GetDebuggerDisplay("{{ table.PrimaryNameAttribute }}");
 
     [AttributeLogicalName("{{ table.PrimaryIdAttribute }}")]
     [DataversePropertyMetadata(DataversePropertyKind.PrimaryId, typeof(Guid))]
-    public override Guid Id {
-        get {
-            return base.Id;
-        }
-        set {
-            SetId("{{ table.PrimaryIdAttribute }}", value);
-        }
+    public override Guid Id
+    {
+        get { return base.Id; }
+        set { SetId("{{ table.PrimaryIdAttribute }}", value); }
     }
 
     {{~ primary_name_display = table.PrimaryNameAttribute ~}}
@@ -40,12 +40,12 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     {{~ end ~}}
     {{~ end ~}}
     /// <summary>
-    /// <para>{{ table.PrimaryNameAttribute }}</para>
-    /// <para>Display Name: {{ primary_name_display }}</para>
+    /// <para>{{ table.PrimaryNameAttribute | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
+    /// <para>Display Name: {{ primary_name_display | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
     /// </summary>
     [AttributeLogicalName("{{ table.PrimaryNameAttribute }}")]
     [DataversePropertyMetadata(DataversePropertyKind.String, typeof(string))]
-    [DisplayName("{{ primary_name_display }}")]
+    [DisplayName("{{ primary_name_display | string.replace "\\" "\\\\" | string.replace '"' '\\"' | string.replace "\r" " " | string.replace "\n" " " | string.replace "\t" " " }}")]
     public string? PrimaryNameField
     {
         get => GetAttributeValue<string?>("{{ table.PrimaryNameAttribute }}");
@@ -57,11 +57,11 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     /// <summary>
     {{~ if column.Description && column.Description != "" && column.Description != " " && column.Description != "  " && column.Description != "   " && column.Description != "\t" && column.Description != "\n" && column.Description != "\r\n" ~}}
     {{~ for line in column.Description | string.split '\n' ~}}
-    /// <para>{{ line | string.strip }}</para>
+    /// <para>{{ line | string.strip | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
     {{~ end ~}}
     {{~ end ~}}
     {{~ if column.DisplayName ~}}
-    /// <para>Display Name: {{ column.DisplayName }}</para>
+    /// <para>Display Name: {{ column.DisplayName | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
     {{~ end ~}}
     /// </summary>
     {{~ end ~}}
@@ -105,7 +105,7 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     {{~ else if column.TypeName == "PrimaryIdColumnModel" ~}}
     [DataversePropertyMetadata(DataversePropertyKind.PrimaryId, typeof(Guid))]
     {{~ end ~}}
-    [DisplayName("{{ column.DisplayName }}")]
+    [DisplayName("{{ column.DisplayName | string.replace "\\" "\\\\" | string.replace '"' '\\"' | string.replace "\r" " " | string.replace "\n" " " | string.replace "\t" " " }}")]
     {{~ if column.IsObsolete ~}}
     [ObsoleteAttribute()]
     {{~ end ~}}
@@ -278,12 +278,7 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     /// <returns>The retrieved {{table.SchemaName}}</returns>
     public static {{table.SchemaName}} Retrieve_{{key.SchemaName}}(IOrganizationService service{{ for attr in key.KeyAttributes }}, {{ if attr.TypeName == "StringColumnModel" || attr.TypeName == "MemoColumnModel" }}string{{ else if attr.TypeName == "IntegerColumnModel" }}int{{ else if attr.TypeName == "BigIntColumnModel" }}long{{ else if attr.TypeName == "BooleanColumnModel" }}bool{{ else if attr.TypeName == "DateTimeColumnModel" }}DateTime{{ else if attr.TypeName == "DecimalColumnModel" }}decimal{{ else if attr.TypeName == "DoubleColumnModel" }}double{{ else if attr.TypeName == "MoneyColumnModel" }}decimal{{ else if attr.TypeName == "EnumColumnModel" }}{{ attr.OptionsetName }}{{ else if attr.TypeName == "LookupColumnModel" }}Guid{{ else if attr.TypeName == "FileColumnModel" || attr.TypeName == "ImageColumnModel" }}byte[]{{ else if attr.TypeName == "PrimaryIdColumnModel" }}Guid{{ else if attr.TypeName == "UniqueIdentifierColumnModel" }}Guid{{ else if attr.TypeName == "BooleanManagedColumnModel" }}Bool{{ else if attr.TypeName == "ManagedColumnModel" }}{{attr.FullReturnType}}{{ else }}object{{ end }} {{attr.SchemaName}}{{ end }}, params Expression<Func<{{table.SchemaName}}, object>>[] columns)
     {
-        var keyedEntityReference = new EntityReference(EntityLogicalName, new KeyAttributeCollection
-        {
-            {{~ for attr in key.KeyAttributes ~}}
-            ["{{attr.LogicalName}}"] = {{attr.SchemaName}},
-            {{~ end ~}}
-        });
+        var keyedEntityReference = new EntityReference(EntityLogicalName, new KeyAttributeCollection { {{~ for attr in key.KeyAttributes ~}} ["{{attr.LogicalName}}"] = {{attr.SchemaName}}, {{~ end ~}} });
 
         return service.Retrieve(keyedEntityReference, columns);
     }

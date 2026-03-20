@@ -2,14 +2,10 @@
 public class ExtendedEntity : Entity
 {
     public ExtendedEntity(string logicalName)
-        : base(logicalName)
-    {
-    }
+        : base(logicalName) { }
 
     public ExtendedEntity(string logicalName, Guid id)
-        : base(logicalName, id)
-    {
-    }
+        : base(logicalName, id) { }
 
     public new T? GetAttributeValue<T>(string attributeLogicalName)
     {
@@ -21,8 +17,10 @@ public class ExtendedEntity : Entity
         string display = GetType().Name;
 
         var name = this.GetAttributeValue<string>(primaryNameAttribute);
-        if (!string.IsNullOrEmpty(name)) display += $" ({name})";
-        if (this.Id != Guid.Empty) display += $" [{this.Id}]";
+        if (!string.IsNullOrEmpty(name))
+            display += $" ({name})";
+        if (this.Id != Guid.Empty)
+            display += $" [{this.Id}]";
 
         return display;
     }
@@ -91,9 +89,7 @@ public class ExtendedEntity : Entity
         var optionSetCollection = this.GetAttributeValue<OptionSetValueCollection>(attributeName);
         if (optionSetCollection != null && optionSetCollection.Count != 0)
         {
-            return optionSetCollection
-                .Select(osv => (T)Enum.ToObject(typeof(T), osv.Value))
-                .ToArray();
+            return optionSetCollection.Select(osv => (T)Enum.ToObject(typeof(T), osv.Value)).ToArray();
         }
 
         return Enumerable.Empty<T>();
@@ -108,9 +104,7 @@ public class ExtendedEntity : Entity
             return;
         }
 
-        var arr = list
-            .Select(v => new OptionSetValue(v))
-            .ToArray();
+        var arr = list.Select(v => new OptionSetValue(v)).ToArray();
         this.SetAttributeValue(attributeName, new OptionSetValueCollection(arr));
     }
 

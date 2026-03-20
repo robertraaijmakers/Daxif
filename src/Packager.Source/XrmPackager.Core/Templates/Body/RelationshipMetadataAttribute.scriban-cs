@@ -1,6 +1,6 @@
 [System.CodeDom.Compiler.GeneratedCode("DataverseProxyGenerator", "{{version}}")]
-[AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
-public sealed class RelationshipMetadataAttribute : Attribute
+[System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false)]
+public sealed class RelationshipMetadataAttribute : System.Attribute
 {
     public string RelationshipType { get; }
     public string? ThisEntityAttribute { get; }

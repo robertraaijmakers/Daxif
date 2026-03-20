@@ -49,13 +49,7 @@ public static class FilePathHelper
     /// <returns>The relative file path.</returns>
     public static string GetHelperFilePath(string fileName)
     {
-        var folder = fileName switch
-        {
-            "TableAttributeHelpers" or "ExtendedEntity" => "tables",
-            _ => "attributes",
-        };
-
-        return Path.Combine(folder, $"{fileName}.cs");
+        return Path.Combine("helpers", $"{fileName}.cs");
     }
 
     /// <summary>

@@ -43,12 +43,14 @@ public abstract class BaseFileGenerator
         var templateContext = new TemplateContext(StringComparer.InvariantCulture)
         {
             LoopLimit = 0, // No limit
+            LimitToString = int.MaxValue, // Prevent Scriban's default 1MB ToString truncation (which appends "...")
             MemberRenamer = member => member.Name, // Preserve original member names
         };
 
         // Use a ScriptObject that preserves original property names
         var scriptObject = new ScriptObject(StringComparer.InvariantCulture);
         scriptObject.Import(model, renamer: member => member.Name);
+        scriptObject.Import(new TemplateTextFunctions(), renamer: member => member.Name);
         templateContext.PushGlobal(scriptObject);
 
         if (loader != null)

@@ -101,9 +101,35 @@ public class CsharpierFormatter : ICodeFormatter
             return;
         }
 
+        // Back up original content before formatting.
+        // CSharpier formats files in-place; a crash mid-write leaves the file truncated on disk.
+        // These backups allow us to restore all files if CSharpier fails.
+        var backups = new Dictionary<string, string>(normalizedFilePaths.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var filePath in normalizedFilePaths)
+        {
+            try
+            {
+                backups[filePath] = File.ReadAllText(filePath);
+            }
+            catch
+            { /* skip unreadable files */
+            }
+        }
+
         if (!TryRunFormatter(_command, normalizedFilePaths, out var error))
         {
-            _logger.Warning($"Error formatting {normalizedFilePaths.Count} files with csharpier: {error}");
+            _logger.Warning($"Error formatting {normalizedFilePaths.Count} files with csharpier: {error}. Restoring original files to prevent truncation.");
+            foreach (var (filePath, content) in backups)
+            {
+                try
+                {
+                    File.WriteAllText(filePath, content);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning($"Failed to restore '{Path.GetFileName(filePath)}': {ex.Message}");
+                }
+            }
         }
         else
         {
@@ -134,6 +160,12 @@ public class CsharpierFormatter : ICodeFormatter
                 return false;
             }
 
+            // Read streams asynchronously before WaitForExit to prevent a deadlock.
+            // If the process writes more output than the OS pipe buffer can hold (~64 KB),
+            // it blocks waiting for a reader while we block waiting for it to exit.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
             if (!process.WaitForExit(300000))
             {
                 try
@@ -149,14 +181,12 @@ public class CsharpierFormatter : ICodeFormatter
                 return false;
             }
 
+            var stderr = stderrTask.GetAwaiter().GetResult();
+            var stdout = stdoutTask.GetAwaiter().GetResult();
+
             if (process.ExitCode != 0)
             {
-                error = process.StandardError.ReadToEnd();
-                if (string.IsNullOrWhiteSpace(error))
-                {
-                    error = process.StandardOutput.ReadToEnd();
-                }
-
+                error = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
                 error = string.IsNullOrWhiteSpace(error) ? $"'{command.FileName}' exited with code {process.ExitCode}." : error.Trim();
                 return false;
             }

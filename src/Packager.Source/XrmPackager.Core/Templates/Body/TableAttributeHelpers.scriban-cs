@@ -12,7 +12,8 @@ public static class TableAttributeHelpers
     public static string GetColumnName<T>(Expression<Func<T, object?>> lambda)
         where T : Entity
     {
-        if (lambda == null) throw new ArgumentNullException(nameof(lambda));
+        if (lambda == null)
+            throw new ArgumentNullException(nameof(lambda));
 
         MemberExpression? body = lambda.Body as MemberExpression;
 
@@ -22,9 +23,7 @@ public static class TableAttributeHelpers
             body = ubody.Operand as MemberExpression;
         }
 
-        var attribute = body.Member.GetCustomAttributes(false)
-            .Where(x => x is AttributeLogicalNameAttribute)
-            .FirstOrDefault() as AttributeLogicalNameAttribute;
+        var attribute = body.Member.GetCustomAttributes(false).Where(x => x is AttributeLogicalNameAttribute).FirstOrDefault() as AttributeLogicalNameAttribute;
 
         if (attribute == null)
         {
@@ -80,7 +79,8 @@ public static class TableAttributeHelpers
     public static T Retrieve<T>(this IOrganizationService service, Guid id, params Expression<Func<T, object>>[] attrs)
         where T : Entity, new()
     {
-        if (service == null) throw new ArgumentNullException(nameof(service));
+        if (service == null)
+            throw new ArgumentNullException(nameof(service));
 
         var entity = new T();
         var entityLogicalName = entity.LogicalName;
@@ -107,8 +107,10 @@ public static class TableAttributeHelpers
     public static T Retrieve<T>(this IOrganizationService service, EntityReference keyedEntityReference, params Expression<Func<T, object>>[] attrs)
         where T : Entity, new()
     {
-        if (service == null) throw new ArgumentNullException(nameof(service));
-        if (keyedEntityReference == null) throw new ArgumentNullException(nameof(keyedEntityReference));
+        if (service == null)
+            throw new ArgumentNullException(nameof(service));
+        if (keyedEntityReference == null)
+            throw new ArgumentNullException(nameof(keyedEntityReference));
 
         var req = new Microsoft.Xrm.Sdk.Messages.RetrieveRequest();
         req.Target = keyedEntityReference;
