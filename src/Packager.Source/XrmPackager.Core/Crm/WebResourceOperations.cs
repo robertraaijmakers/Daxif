@@ -99,7 +99,7 @@ public sealed class WebResourceOperations
             };
             var createdId = client.Create(entity);
             TryAddComponentToSolution(client, createdId, options.SolutionName, 61);
-            _logger.Verbose($"Created webresource: {name}");
+            _logger.Info($"Created webresource: {name}");
         }
 
         foreach (var name in toUpdate)
@@ -114,14 +114,14 @@ public sealed class WebResourceOperations
             };
             client.Update(update);
             TryAddComponentToSolution(client, current.Id, options.SolutionName, 61);
-            _logger.Verbose($"Updated webresource: {name}");
+            _logger.Info($"Updated webresource: {name}");
         }
 
         foreach (var name in toDelete)
         {
             var current = crmByName[name];
             client.Delete("webresource", current.Id);
-            _logger.Verbose($"Deleted webresource: {name}");
+            _logger.Info($"Deleted webresource: {name}");
         }
 
         _logger.Info("Webresource sync completed.");

@@ -32,4 +32,5 @@
         "**/obj/": true,
         "**/bin/": true,
     },
+    "sarif-viewer.connectToGithubCodeScanning": "off",
 }
