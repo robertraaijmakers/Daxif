@@ -15,6 +15,8 @@ internal sealed class GenerationCommandArguments
     public string? SolutionName { get; init; }
     public required List<string> Entities { get; init; }
     public bool OneFile { get; init; }
+    public bool ConsolidateHelpers { get; init; }
+    public bool FormatOutput { get; init; }
 
     public string? CrmVersion { get; init; }
     public bool UseDeprecated { get; init; }
@@ -28,19 +30,15 @@ internal sealed class GenerationCommandArguments
 
 internal static class GenerationCommandArgumentParser
 {
-    public static GenerationCommandArguments Parse(
-        string[] args,
-        int startIndex,
-        GenerationCommandType commandType,
-        string defaultNamespace,
-        bool defaultOneFile
-    )
+    public static GenerationCommandArguments Parse(string[] args, int startIndex, GenerationCommandType commandType, string defaultNamespace, bool defaultOneFile)
     {
         var output = string.Empty;
         var ns = defaultNamespace;
         string? solutionName = null;
         var entities = new List<string>();
         var oneFile = defaultOneFile;
+        var consolidateHelpers = false;
+        var formatOutput = false;
 
         string? crmVersion = null;
         var useDeprecated = false;
@@ -64,12 +62,7 @@ internal static class GenerationCommandArgumentParser
                     ns = ReadRequiredValue(args, ref i, "--namespace");
                     break;
                 case "--entities":
-                    entities = ReadRequiredValue(args, ref i, "--entities")
-                        .Split(
-                            ',',
-                            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-                        )
-                        .ToList();
+                    entities = ReadRequiredValue(args, ref i, "--entities").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
                     break;
                 case "--solution":
                 case "-s":
@@ -80,6 +73,12 @@ internal static class GenerationCommandArgumentParser
                     break;
                 case "--one-file":
                     oneFile = true;
+                    break;
+                case "--consolidate-helpers":
+                    consolidateHelpers = true;
+                    break;
+                case "--format":
+                    formatOutput = true;
                     break;
 
                 case "--crm-version":
@@ -144,6 +143,8 @@ internal static class GenerationCommandArgumentParser
             SolutionName = solutionName,
             Entities = entities,
             OneFile = oneFile,
+            ConsolidateHelpers = consolidateHelpers,
+            FormatOutput = formatOutput,
             CrmVersion = crmVersion,
             UseDeprecated = useDeprecated,
             SkipForms = skipForms,

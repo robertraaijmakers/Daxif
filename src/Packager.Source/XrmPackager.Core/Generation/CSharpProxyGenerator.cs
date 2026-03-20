@@ -36,11 +36,7 @@ public class CSharpProxyGenerator : ICodeGenerator
         return version?.ToString() ?? "1.0.0.0";
     }
 
-    public IEnumerable<GeneratedFile> GenerateCode(
-        IEnumerable<TableModel> tables,
-        IEnumerable<CustomApiModel> customApis,
-        XrmGenerationConfig config
-    )
+    public IEnumerable<GeneratedFile> GenerateCode(IEnumerable<TableModel> tables, IEnumerable<CustomApiModel> customApis, XrmGenerationConfig config)
     {
         ArgumentNullException.ThrowIfNull(tables);
         ArgumentNullException.ThrowIfNull(config);
@@ -48,41 +44,19 @@ public class CSharpProxyGenerator : ICodeGenerator
         var context = CreateGenerationContext(config);
         var tablesList = NormalizeOptionSetTypeNames(tables.ToList(), config);
         var (interfaceColumns, tableToInterfaces) = PrepareIntersectionData(tablesList, config);
-        var customApiList = config.GenerateCustomApis
-            ? customApis.ToList()
-            : new List<CustomApiModel>();
+        var customApiList = config.GenerateCustomApis ? customApis.ToList() : new List<CustomApiModel>();
 
         if (config.SingleFile)
         {
-            var interfaceColumnsReadOnly = interfaceColumns.ToDictionary(
-                kvp => kvp.Key,
-                kvp => (IReadOnlySet<ColumnSignature>)kvp.Value,
-                StringComparer.InvariantCulture
-            );
-            var tableToInterfacesReadOnly = tableToInterfaces.ToDictionary(
-                kvp => kvp.Key,
-                kvp => (IReadOnlyList<string>)kvp.Value,
-                StringComparer.InvariantCulture
-            );
-            return singleFileGenerator.Generate(
-                (tablesList, interfaceColumnsReadOnly, tableToInterfacesReadOnly, customApiList),
-                context
-            );
+            var interfaceColumnsReadOnly = interfaceColumns.ToDictionary(kvp => kvp.Key, kvp => (IReadOnlySet<ColumnSignature>)kvp.Value, StringComparer.InvariantCulture);
+            var tableToInterfacesReadOnly = tableToInterfaces.ToDictionary(kvp => kvp.Key, kvp => (IReadOnlyList<string>)kvp.Value, StringComparer.InvariantCulture);
+            return singleFileGenerator.Generate((tablesList, interfaceColumnsReadOnly, tableToInterfacesReadOnly, customApiList), context);
         }
 
-        return GenerateMultipleFiles(
-            tablesList,
-            interfaceColumns,
-            tableToInterfaces,
-            customApiList,
-            context
-        );
+        return GenerateMultipleFiles(tablesList, interfaceColumns, tableToInterfaces, customApiList, context, config);
     }
 
-    private static List<TableModel> NormalizeOptionSetTypeNames(
-        List<TableModel> tables,
-        XrmGenerationConfig config
-    )
+    private static List<TableModel> NormalizeOptionSetTypeNames(List<TableModel> tables, XrmGenerationConfig config)
     {
         var reservedTypeNames = new HashSet<string>(StringComparer.Ordinal)
         {
@@ -93,9 +67,7 @@ public class CSharpProxyGenerator : ICodeGenerator
             "RelationshipMetadataAttribute",
             "TableAttributeHelpers",
             "ExtendedEntity",
-            string.IsNullOrWhiteSpace(config.ServiceContextName)
-                ? "Xrm"
-                : config.ServiceContextName,
+            string.IsNullOrWhiteSpace(config.ServiceContextName) ? "Xrm" : config.ServiceContextName,
         };
 
         foreach (var table in tables)
@@ -148,12 +120,7 @@ public class CSharpProxyGenerator : ICodeGenerator
                                 return column;
                             }
 
-                            if (
-                                !mappedNames.TryGetValue(
-                                    enumColumn.OptionsetName,
-                                    out var mappedName
-                                )
-                            )
+                            if (!mappedNames.TryGetValue(enumColumn.OptionsetName, out var mappedName))
                             {
                                 return enumColumn;
                             }
@@ -176,23 +143,17 @@ public class CSharpProxyGenerator : ICodeGenerator
             Namespace = config.NamespaceSetting ?? "DataverseContext",
             Version = GetAssemblyVersion(),
             Templates = templateProvider,
-            ServiceContextName = string.IsNullOrEmpty(config.ServiceContextName)
-                ? "Xrm"
-                : config.ServiceContextName,
+            ServiceContextName = string.IsNullOrEmpty(config.ServiceContextName) ? "Xrm" : config.ServiceContextName,
             IntersectMapping = config.IntersectMapping,
         };
     }
 
-    private static (
-        Dictionary<string, HashSet<ColumnSignature>> InterfaceColumns,
-        Dictionary<string, List<string>> TableToInterfaces
-    ) PrepareIntersectionData(List<TableModel> tablesList, XrmGenerationConfig config)
+    private static (Dictionary<string, HashSet<ColumnSignature>> InterfaceColumns, Dictionary<string, List<string>> TableToInterfaces) PrepareIntersectionData(
+        List<TableModel> tablesList,
+        XrmGenerationConfig config
+    )
     {
-        var tableDict = tablesList.ToDictionary(
-            t => t.LogicalName,
-            t => t,
-            StringComparer.InvariantCulture
-        );
+        var tableDict = tablesList.ToDictionary(t => t.LogicalName, t => t, StringComparer.InvariantCulture);
         var tableColumns = BuildTableColumns(tablesList);
         return BuildIntersectionData(config.IntersectMapping, tableDict, tableColumns);
     }
@@ -202,7 +163,8 @@ public class CSharpProxyGenerator : ICodeGenerator
         Dictionary<string, HashSet<ColumnSignature>> interfaceColumns,
         Dictionary<string, List<string>> tableToInterfaces,
         IEnumerable<CustomApiModel> customApiList,
-        GenerationContext context
+        GenerationContext context,
+        XrmGenerationConfig config
     )
     {
         var files = new List<GeneratedFile>();
@@ -213,20 +175,13 @@ public class CSharpProxyGenerator : ICodeGenerator
             var interfaceName = kvp.Key;
             var colSigs = kvp.Value;
 
-            files.AddRange(
-                intersectionInterfaceGenerator.Generate(
-                    (interfaceName, colSigs, tablesList),
-                    context
-                )
-            );
+            files.AddRange(intersectionInterfaceGenerator.Generate((interfaceName, colSigs, tablesList), context));
         }
 
         // Generate proxy classes
         foreach (var table in tablesList)
         {
-            var interfaces = tableToInterfaces.TryGetValue(table.LogicalName, out var iFaces)
-                ? iFaces
-                : new List<string>();
+            var interfaces = tableToInterfaces.TryGetValue(table.LogicalName, out var iFaces) ? iFaces : new List<string>();
             files.AddRange(proxyClassGenerator.Generate((table, interfaces), context));
         }
 
@@ -241,11 +196,21 @@ public class CSharpProxyGenerator : ICodeGenerator
         files.AddRange(xrmContextGenerator.Generate(tablesList, context));
 
         // Generate helper files
-        files.AddRange(helperFileGenerator.Generate("DataversePropertyMetadataAttribute", context));
-        files.AddRange(helperFileGenerator.Generate("OptionSetMetadataAttribute", context));
-        files.AddRange(helperFileGenerator.Generate("RelationshipMetadataAttribute", context));
-        files.AddRange(helperFileGenerator.Generate("TableAttributeHelpers", context));
-        files.AddRange(helperFileGenerator.Generate("ExtendedEntity", context));
+        if (config.ConsolidateHelpers)
+        {
+            // Generate consolidated XrmHelpers.cs containing all helper classes
+            var consolidatedHelperGenerator = new ConsolidatedHelperGenerator();
+            files.AddRange(consolidatedHelperGenerator.Generate(context));
+        }
+        else
+        {
+            // Generate individual helper files
+            files.AddRange(helperFileGenerator.Generate("DataversePropertyMetadataAttribute", context));
+            files.AddRange(helperFileGenerator.Generate("OptionSetMetadataAttribute", context));
+            files.AddRange(helperFileGenerator.Generate("RelationshipMetadataAttribute", context));
+            files.AddRange(helperFileGenerator.Generate("TableAttributeHelpers", context));
+            files.AddRange(helperFileGenerator.Generate("ExtendedEntity", context));
+        }
 
         // Generate custom API request/response classes
         foreach (var customApi in customApiList)
@@ -258,13 +223,9 @@ public class CSharpProxyGenerator : ICodeGenerator
     }
 
     // --- Extracted Helper Methods ---
-    private static Dictionary<string, HashSet<ColumnSignature>> BuildTableColumns(
-        IEnumerable<TableModel> tables
-    )
+    private static Dictionary<string, HashSet<ColumnSignature>> BuildTableColumns(IEnumerable<TableModel> tables)
     {
-        var tableColumns = new Dictionary<string, HashSet<ColumnSignature>>(
-            StringComparer.InvariantCulture
-        );
+        var tableColumns = new Dictionary<string, HashSet<ColumnSignature>>(StringComparer.InvariantCulture);
         foreach (var t in tables)
         {
             var set = new HashSet<ColumnSignature>();
@@ -272,12 +233,7 @@ public class CSharpProxyGenerator : ICodeGenerator
             {
                 // For EnumColumnModel, include OptionsetName in the signature to distinguish enums with same logical name but different optionsets
                 if (c is EnumColumnModel enumCol)
-                    set.Add(
-                        new ColumnSignature(
-                            c.SchemaName,
-                            $"EnumColumnModel:{enumCol.OptionsetName}"
-                        )
-                    );
+                    set.Add(new ColumnSignature(c.SchemaName, $"EnumColumnModel:{enumCol.OptionsetName}"));
                 else
                     set.Add(new ColumnSignature(c.SchemaName, c.TypeName));
             }
@@ -288,21 +244,14 @@ public class CSharpProxyGenerator : ICodeGenerator
         return tableColumns;
     }
 
-    private static (
-        Dictionary<string, HashSet<ColumnSignature>> InterfaceColumns,
-        Dictionary<string, List<string>> TableToInterfaces
-    ) BuildIntersectionData(
+    private static (Dictionary<string, HashSet<ColumnSignature>> InterfaceColumns, Dictionary<string, List<string>> TableToInterfaces) BuildIntersectionData(
         IReadOnlyDictionary<string, IReadOnlyList<string>> intersectMapping,
         Dictionary<string, TableModel> tableDict,
         Dictionary<string, HashSet<ColumnSignature>> tableColumns
     )
     {
-        var interfaceColumns = new Dictionary<string, HashSet<ColumnSignature>>(
-            StringComparer.InvariantCulture
-        );
-        var tableToInterfaces = new Dictionary<string, List<string>>(
-            StringComparer.InvariantCulture
-        );
+        var interfaceColumns = new Dictionary<string, HashSet<ColumnSignature>>(StringComparer.InvariantCulture);
+        var tableToInterfaces = new Dictionary<string, List<string>>(StringComparer.InvariantCulture);
 
         if (intersectMapping != null && intersectMapping.Count > 0)
         {

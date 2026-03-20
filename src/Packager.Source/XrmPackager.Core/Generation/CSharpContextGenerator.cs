@@ -2,6 +2,7 @@ namespace XrmPackager.Core.Generation;
 
 using System.Text;
 using Microsoft.PowerPlatform.Dataverse.Client;
+using XrmPackager.Core.Formatting;
 using XrmPackager.Core.Metadata;
 using XrmPackager.Core.Output;
 
@@ -20,8 +21,7 @@ public sealed class CSharpContextGenerator
 
         if (options.OneFile)
         {
-            var outputLooksLikeDirectory =
-                Directory.Exists(outputPath) || !Path.HasExtension(outputPath);
+            var outputLooksLikeDirectory = Directory.Exists(outputPath) || !Path.HasExtension(outputPath);
 
             if (outputLooksLikeDirectory)
             {
@@ -33,18 +33,14 @@ public sealed class CSharpContextGenerator
 
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            throw new InvalidOperationException(
-                $"Unable to determine output directory for '{options.OutputPath}'."
-            );
+            throw new InvalidOperationException($"Unable to determine output directory for '{options.OutputPath}'.");
         }
 
         Directory.CreateDirectory(outputDirectory);
 
         var serviceContextName = Path.GetFileNameWithoutExtension(outputPath);
         var fetchConfig = new XrmFetchConfig(
-            string.IsNullOrWhiteSpace(options.SolutionName)
-                ? Array.Empty<string>()
-                : new[] { options.SolutionName },
+            string.IsNullOrWhiteSpace(options.SolutionName) ? Array.Empty<string>() : new[] { options.SolutionName },
             options.Entities,
             string.Empty,
             new Dictionary<string, string>(StringComparer.InvariantCulture)
@@ -62,7 +58,9 @@ public sealed class CSharpContextGenerator
             serviceContextName,
             new Dictionary<string, IReadOnlyList<string>>(StringComparer.InvariantCulture),
             options.OneFile,
-            true
+            true,
+            options.ConsolidateHelpers,
+            options.FormatOutput
         );
 
         var generator = new CSharpProxyGenerator();
@@ -76,14 +74,24 @@ public sealed class CSharpContextGenerator
             }
 
             var generatedMainFile = files.First();
-            File.WriteAllText(outputPath, generatedMainFile.Content, Encoding.UTF8);
+            var content = generatedMainFile.Content;
+
+            // Apply formatting if requested
+            if (options.FormatOutput)
+            {
+                var formatter = new CsharpierFormatter(_logger);
+                content = formatter.Format(content);
+            }
+
+            File.WriteAllText(outputPath, content, Encoding.UTF8);
             _logger.Info($"C# context generated: {outputPath}");
             _logger.Info($"Tables included: {tables.Count}");
             _logger.Info($"Custom APIs included: {customApis.Count}");
             return;
         }
 
-        var outputWriter = new FileSystemOutputWriter();
+        var formatter2 = options.FormatOutput ? new CsharpierFormatter(_logger) : null;
+        var outputWriter = new FileSystemOutputWriter(formatter2);
         outputWriter.WriteFiles(files, outputDirectory);
 
         _logger.Info($"C# context generated to directory: {outputDirectory}");

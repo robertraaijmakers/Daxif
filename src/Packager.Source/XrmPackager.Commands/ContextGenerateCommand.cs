@@ -14,21 +14,12 @@ public sealed class ContextGenerateCommand
 
     public int Execute(string[] args)
     {
-        if (
-            args.Length < 2
-            || !string.Equals(args[1], "generate", StringComparison.OrdinalIgnoreCase)
-        )
+        if (args.Length < 2 || !string.Equals(args[1], "generate", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidArgumentException("Context command requires: context generate");
         }
 
-        var parsed = GenerationCommandArgumentParser.Parse(
-            args,
-            startIndex: 2,
-            commandType: GenerationCommandType.Context,
-            defaultNamespace: "Xrm.Context",
-            defaultOneFile: true
-        );
+        var parsed = GenerationCommandArgumentParser.Parse(args, startIndex: 2, commandType: GenerationCommandType.Context, defaultNamespace: "Xrm.Context", defaultOneFile: true);
 
         return CommandExecution.ExecuteWithClient(
             _logger,
@@ -44,6 +35,8 @@ public sealed class ContextGenerateCommand
                         SolutionName = parsed.SolutionName,
                         Entities = parsed.Entities,
                         OneFile = parsed.OneFile,
+                        ConsolidateHelpers = parsed.ConsolidateHelpers,
+                        FormatOutput = parsed.FormatOutput,
                     }
                 );
             }

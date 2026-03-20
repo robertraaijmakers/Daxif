@@ -2,8 +2,9 @@ param(
     [Alias("Environment")]
     [string]$EnvironmentName = "Dev",
     [string]$ConfigFile = "$PSScriptRoot/_Config.ps1",
-    [switch]$MultiFile,
     [switch]$OneFile,
+    [switch]$NoFormat,
+    [switch]$ConsolidateHelpers,
     [Parameter(ValueFromRemainingArguments)]
     [string[]]$AdditionalArguments
 )
@@ -29,7 +30,7 @@ if (-not $config.Path.entityFolder) {
 $config = Import-Module $PSScriptRoot\_InitXrmPackager.ps1 -ArgumentList $envConfig -Force
 
 $contextOutputPath = $config.Path.entityFolder
-if (-not $MultiFile) {
+if ($OneFile) {
     $contextOutputPath = Join-Path $config.Path.entityFolder "XrmContext.cs"
 }
 
@@ -52,10 +53,22 @@ if ($config.SolutionInfoPlugins.name) {
     $xrmPackagerArguments += @("--solution", $config.SolutionInfoPlugins.name)
 }
 
-if ($MultiFile) {
-    $xrmPackagerArguments += "--multi-file"
-} elseif ($OneFile) {
+# Default to multi-file mode with formatting
+if ($OneFile) {
     $xrmPackagerArguments += "--one-file"
+} else {
+    # Multi-file is the default
+    $xrmPackagerArguments += "--multi-file"
+}
+
+# Add formatting by default, unless disabled
+if (-not $NoFormat) {
+    $xrmPackagerArguments += "--format"
+}
+
+# Add consolidate helpers if requested
+if ($ConsolidateHelpers) {
+    $xrmPackagerArguments += "--consolidate-helpers"
 }
 
 if ($AdditionalArguments) {

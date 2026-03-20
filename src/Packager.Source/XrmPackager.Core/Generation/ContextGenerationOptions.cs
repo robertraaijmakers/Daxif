@@ -7,4 +7,6 @@ public sealed class ContextGenerationOptions
     public string? SolutionName { get; init; }
     public IReadOnlyList<string> Entities { get; init; } = Array.Empty<string>();
     public bool OneFile { get; init; } = true;
+    public bool ConsolidateHelpers { get; init; } = false;
+    public bool FormatOutput { get; init; } = false;
 }
