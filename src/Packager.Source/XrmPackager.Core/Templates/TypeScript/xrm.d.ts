@@ -1563,6 +1563,11 @@ declare namespace Xrm {
 
   interface StageChangeEventArguments extends StageSelectedEventArguments {
     getDirection(): ProcessStageChangeDirection;
+
+    /**
+     * Cancels the lookup tag click event, but all remaining handlers for the event will still be executed.
+     */
+    preventDefault(): void;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-interface

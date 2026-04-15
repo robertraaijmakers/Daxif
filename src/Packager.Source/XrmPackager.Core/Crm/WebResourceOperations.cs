@@ -1,5 +1,6 @@
 namespace XrmPackager.Core.Crm;
 
+using System.Xml.Linq;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
@@ -99,6 +100,9 @@ public sealed class WebResourceOperations
             };
             var createdId = client.Create(entity);
             TryAddComponentToSolution(client, createdId, options.SolutionName, 61);
+            // Track newly created entity so RESX dependency sync can find it.
+            var createdEntity = new Entity("webresource", createdId) { ["dependencyxml"] = string.Empty };
+            crmByName[name] = createdEntity;
             _logger.Info($"Created webresource: {name}");
         }
 
@@ -125,6 +129,8 @@ public sealed class WebResourceOperations
         }
 
         _logger.Info("Webresource sync completed.");
+
+        SyncResxDependencies(client, localResources, crmByName, options.DryRun);
 
         if (options.PublishAfterSync)
         {
@@ -171,7 +177,7 @@ public sealed class WebResourceOperations
 
         var query = new QueryExpression("webresource")
         {
-            ColumnSet = new ColumnSet("webresourceid", "name", "displayname", "content"),
+            ColumnSet = new ColumnSet("webresourceid", "name", "displayname", "content", "dependencyxml"),
             Criteria = new FilterExpression(LogicalOperator.And),
         };
         query.Criteria.AddCondition("ismanaged", ConditionOperator.Equal, false);
@@ -363,6 +369,150 @@ public sealed class WebResourceOperations
         {
             _logger.Verbose($"Component {objectId} may already exist in solution {solutionName}.");
         }
+    }
+
+    private void SyncResxDependencies(
+        IOrganizationService client,
+        List<LocalWebResource> localResources,
+        Dictionary<string, Entity> crmByName,
+        bool dryRun
+    )
+    {
+        // Find all ScriptTranslations.<lcid>.resx resources (located in the /resx/ folder).
+        var scriptTranslations = localResources
+            .Where(x =>
+                x.Type == WebResourceType.RESX
+                && IsScriptTranslationsResx(x.Name)
+            )
+            .ToList();
+
+        if (scriptTranslations.Count == 0)
+        {
+            return;
+        }
+
+        // Every JS webresource in Dataverse gets a dependency on all ScriptTranslations RESX files.
+        var jsEntities = crmByName
+            .Values
+            .Where(e => e.GetAttributeValue<string>("name")?.EndsWith(".js", StringComparison.OrdinalIgnoreCase) == true)
+            .ToList();
+
+        foreach (var jsEntity in jsEntities)
+        {
+            var jsName = jsEntity.GetAttributeValue<string>("name") ?? string.Empty;
+            var currentXml = jsEntity.GetAttributeValue<string>("dependencyxml") ?? string.Empty;
+            var updatedXml = MergeResxDependencies(currentXml, scriptTranslations);
+
+            if (string.Equals(currentXml, updatedXml, StringComparison.Ordinal))
+            {
+                _logger.Verbose($"RESX dependencies for '{jsName}' are already up to date.");
+                continue;
+            }
+
+            if (dryRun)
+            {
+                _logger.Info($"Would register RESX dependencies for '{jsName}'.");
+                continue;
+            }
+
+            var update = new Entity("webresource", jsEntity.Id)
+            {
+                ["dependencyxml"] = updatedXml,
+            };
+            client.Update(update);
+            _logger.Info($"Registered RESX dependencies for '{jsName}'.");
+        }
+    }
+
+    /// <summary>
+    /// Returns true when the webresource name matches the pattern
+    /// &lt;prefix&gt;/resx/ScriptTranslations.&lt;lcid&gt;.resx
+    /// </summary>
+    private static bool IsScriptTranslationsResx(string name)
+    {
+        // e.g. bol_/resx/ScriptTranslations.1033.resx
+        var fileName = name.Split('/').Last();
+        if (!fileName.StartsWith("ScriptTranslations.", StringComparison.OrdinalIgnoreCase)
+            || !fileName.EndsWith(".resx", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Middle part must be a numeric LCID: ScriptTranslations.<lcid>.resx
+        var middle = fileName["ScriptTranslations.".Length..^".resx".Length];
+        return int.TryParse(middle, out _);
+    }
+
+    private static string MergeResxDependencies(
+        string currentXml,
+        List<LocalWebResource> resxResources
+    )
+    {
+        XElement root;
+        XElement dependencyElement;
+
+        if (!string.IsNullOrWhiteSpace(currentXml))
+        {
+            root = XElement.Parse(currentXml);
+            dependencyElement =
+                root.Elements("Dependency")
+                    .FirstOrDefault(
+                        e => (string?)e.Attribute("componentType") == "WebResource"
+                    )
+                ?? new XElement(
+                    "Dependency",
+                    new XAttribute("componentType", "WebResource")
+                );
+
+            if (dependencyElement.Parent == null)
+            {
+                root.Add(dependencyElement);
+            }
+        }
+        else
+        {
+            root = new XElement("Dependencies");
+            dependencyElement = new XElement(
+                "Dependency",
+                new XAttribute("componentType", "WebResource")
+            );
+            root.Add(dependencyElement);
+        }
+
+        var existingNames = dependencyElement
+            .Elements("Library")
+            .Select(e => (string?)e.Attribute("name"))
+            .Where(n => n != null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = false;
+        foreach (var resx in resxResources)
+        {
+            if (existingNames.Contains(resx.Name))
+            {
+                continue;
+            }
+
+            var nameWithoutResxExt = resx.Name[..^5];
+            var lastDot = nameWithoutResxExt.LastIndexOf('.');
+            var languageCode = nameWithoutResxExt[(lastDot + 1)..];
+
+            dependencyElement.Add(
+                new XElement(
+                    "Library",
+                    new XAttribute("name", resx.Name),
+                    new XAttribute("displayName", resx.DisplayName),
+                    new XAttribute("languagecode", languageCode),
+                    new XAttribute("description", ""),
+                    new XAttribute("libraryUniqueId", $"{{{Guid.NewGuid()}}}")
+                )
+            );
+            added = true;
+        }
+
+        return added || string.IsNullOrWhiteSpace(currentXml)
+            ? root.ToString(SaveOptions.DisableFormatting)
+            : currentXml;
     }
 
     private sealed class LocalWebResource

@@ -767,7 +767,30 @@ public sealed class PluginOperations
                 )
                 .ToList();
 
-            _ = ExecuteBulk(client, requests, batchSize, TimeSpan.Zero, true);
+            _ = ExecuteBulk(
+                client,
+                requests,
+                batchSize,
+                TimeSpan.Zero,
+                false,
+                (fault, index) =>
+                {
+                    if (IsMissingDeleteFault(fault))
+                    {
+                        if (index >= 0 && index < batches[i].Count)
+                        {
+                            var missing = batches[i][index];
+                            logger.Verbose(
+                                $"Skipping delete for {missing.LogicalName} '{missing.Id}' because it no longer exists."
+                            );
+                        }
+
+                        return;
+                    }
+
+                    throw new InvalidOperationException(fault.Message);
+                }
+            );
         }
     }
 
@@ -913,7 +936,30 @@ public sealed class PluginOperations
                 )
                 .ToList();
 
-            _ = ExecuteBulk(client, requests, batchSize, TimeSpan.Zero, true);
+            _ = ExecuteBulk(
+                client,
+                requests,
+                batchSize,
+                TimeSpan.Zero,
+                false,
+                (fault, index) =>
+                {
+                    if (IsMissingDeleteFault(fault))
+                    {
+                        if (index >= 0 && index < batches[i].Count)
+                        {
+                            var missing = batches[i][index];
+                            logger.Verbose(
+                                $"Skipping delete for {missing.LogicalName} '{missing.Id}' because it no longer exists."
+                            );
+                        }
+
+                        return;
+                    }
+
+                    throw new InvalidOperationException(fault.Message);
+                }
+            );
         }
     }
 
@@ -1517,7 +1563,7 @@ public sealed class PluginOperations
             filterQuery.Criteria.AddCondition("sdkmessageid", ConditionOperator.In, messageIds);
         }
 
-        var allFilters = client.RetrieveMultiple(filterQuery).Entities;
+        var allFilters = RetrieveAllEntities(client, filterQuery);
 
         var map =
             new Dictionary<
@@ -1526,6 +1572,12 @@ public sealed class PluginOperations
             >();
         foreach (var item in required)
         {
+            if (string.IsNullOrEmpty(item.LogicalName))
+            {
+                map[(item.EventOperation, item.LogicalName)] = (item.MessageId, Guid.Empty);
+                continue;
+            }
+
             var match = allFilters.FirstOrDefault(filter =>
             {
                 var messageRef = filter.GetAttributeValue<EntityReference>("sdkmessageid");
@@ -1536,11 +1588,6 @@ public sealed class PluginOperations
 
                 var filterEntity =
                     filter.GetAttributeValue<string>("primaryobjecttypecode") ?? string.Empty;
-                if (string.IsNullOrEmpty(item.LogicalName))
-                {
-                    return string.IsNullOrEmpty(filterEntity)
-                        || string.Equals(filterEntity, "none", StringComparison.OrdinalIgnoreCase);
-                }
 
                 return string.Equals(
                     item.LogicalName,
@@ -1767,6 +1814,7 @@ public sealed class PluginOperations
                     Deployment: 1,
                     ExecutionMode: 1,
                     Name: apiType.Key,
+                    Description: apiType.Key,
                     ExecutionOrder: 1,
                     FilteredAttributes: string.Empty,
                     UserContext: Guid.Empty
@@ -2307,6 +2355,32 @@ public sealed class PluginOperations
         return result;
     }
 
+    private static List<Entity> RetrieveAllEntities(ServiceClient client, QueryExpression query)
+    {
+        var entities = new List<Entity>();
+        query.PageInfo = new PagingInfo
+        {
+            Count = 5000,
+            PageNumber = 1,
+        };
+
+        while (true)
+        {
+            var response = client.RetrieveMultiple(query);
+            entities.AddRange(response.Entities);
+
+            if (!response.MoreRecords)
+            {
+                break;
+            }
+
+            query.PageInfo.PageNumber++;
+            query.PageInfo.PagingCookie = response.PagingCookie;
+        }
+
+        return entities;
+    }
+
     private static IEnumerable<List<T>> Chunk<T>(IReadOnlyList<T> source, int chunkSize)
     {
         for (var i = 0; i < source.Count; i += chunkSize)
@@ -2345,7 +2419,7 @@ public sealed class PluginOperations
     private static string SyncDescription() => $"Synchronized by XrmPackager ({DateTime.UtcNow:O})";
 
     private static string StepDescription(StepDefinition step) =>
-        string.IsNullOrWhiteSpace(step.Name) ? SyncDescription() : step.Name;
+        string.IsNullOrWhiteSpace(step.Description) ? SyncDescription() : step.Description;
 
     private static string ConvertPublicKeyToken(byte[]? tokenBytes)
     {
@@ -2355,6 +2429,13 @@ public sealed class PluginOperations
         }
 
         return BitConverter.ToString(tokenBytes).Replace("-", string.Empty).ToLowerInvariant();
+    }
+
+    private static bool IsMissingDeleteFault(OrganizationServiceFault fault)
+    {
+        var message = fault.Message ?? string.Empty;
+        return message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("cannot find", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int TupleInt(ITuple tuple, int index) => Convert.ToInt32(tuple[index]);
@@ -2400,8 +2481,10 @@ public sealed class PluginOperations
             _ => "Unknown",
         };
 
-        var stepName = string.IsNullOrWhiteSpace(configuredStepName)
-            ? $"{className}: {modeDisplay} {stageDisplay} {eventOperation} of {entityDisplay}"
+        var stepName =
+            $"{className}: {modeDisplay} {stageDisplay} {eventOperation} of {entityDisplay}";
+        var stepDescription = string.IsNullOrWhiteSpace(configuredStepName)
+            ? stepName
             : configuredStepName;
 
         var userContext = Guid.TryParse(userContextRaw, out var user) ? user : Guid.Empty;
@@ -2413,6 +2496,7 @@ public sealed class PluginOperations
             Deployment: deployment,
             ExecutionMode: executionMode,
             Name: stepName,
+            Description: stepDescription,
             ExecutionOrder: executionOrder,
             FilteredAttributes: filteredAttributes,
             UserContext: userContext
@@ -2542,6 +2626,7 @@ public sealed class PluginOperations
         int Deployment,
         int ExecutionMode,
         string Name,
+        string Description,
         int ExecutionOrder,
         string? FilteredAttributes,
         Guid UserContext
