@@ -57,6 +57,8 @@ public sealed class TypeScriptContextGenerator
             {
                 TypeScriptLegacyArtifactGenerator.Generate(outputDirectory, client, options, tables, _logger);
             }
+
+            GenerateTableRecords(outputDirectory, tables);
             return;
         }
 
@@ -68,6 +70,8 @@ public sealed class TypeScriptContextGenerator
         {
             GenerateMultiFileDefinitions(outputDirectory, options.Namespace, tables);
         }
+
+        GenerateTableRecords(outputDirectory, tables);
 
         _logger.Info($"TypeScript definitions generated in folder: {outputDirectory}");
         _logger.Info($"Tables included: {tables.Count}");
@@ -189,6 +193,98 @@ public sealed class TypeScriptContextGenerator
         }
 
         return id;
+    }
+
+    private void GenerateTableRecords(string outputDirectory, IReadOnlyList<TableModel> tables)
+    {
+        var tableDir = Path.Combine(outputDirectory, "_internal", "Table");
+
+        // Clear and recreate so removed tables don't leave stale files.
+        if (Directory.Exists(tableDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(tableDir, "*.d.ts"))
+            {
+                File.Delete(file);
+            }
+        }
+
+        Directory.CreateDirectory(tableDir);
+
+        foreach (var table in tables)
+        {
+            var safeName = ToTypeScriptIdentifier(table.SchemaName, "Entity");
+            var model = new { Table = MapTableForWebApi(table, safeName) };
+            var content = RenderTemplate("TypeScript.TypeScriptTableRecord.scriban-ts", model);
+            File.WriteAllText(Path.Combine(tableDir, $"{safeName}Record.d.ts"), content);
+        }
+
+        _logger.Info($"Table record interfaces generated in: {tableDir}");
+    }
+
+    private static object MapTableForWebApi(TableModel table, string safeName)
+    {
+        return new
+        {
+            LogicalName = table.LogicalName,
+            SchemaName = safeName,
+            Columns = table.Columns
+                .OrderBy(c => c.LogicalName, StringComparer.InvariantCulture)
+                .Select(c => MapColumnForWebApi(c, table.PrimaryIdAttribute))
+                .ToList(),
+        };
+    }
+
+    private static object MapColumnForWebApi(ColumnModel column, string primaryIdAttribute)
+    {
+        // Lookup columns use the OData _fieldname_value naming convention in WebApi responses.
+        if (column is LookupColumnModel or PartyListColumnModel)
+        {
+            return new
+            {
+                WebApiName = $"_{column.LogicalName}_value",
+                WebApiType = "string | null",
+            };
+        }
+
+        var isPrimaryKey = string.Equals(
+            column.LogicalName,
+            primaryIdAttribute,
+            StringComparison.OrdinalIgnoreCase
+        );
+
+        return new
+        {
+            WebApiName = column.LogicalName,
+            WebApiType = MapWebApiColumnType(column, isPrimaryKey),
+        };
+    }
+
+    private static string MapWebApiColumnType(ColumnModel column, bool isPrimaryKey)
+    {
+        return column switch
+        {
+            // Primary key is always returned and never null.
+            PrimaryIdColumnModel when isPrimaryKey => "string",
+            PrimaryIdColumnModel or UniqueIdentifierColumnModel => "string | null",
+            StringColumnModel or MemoColumnModel => "string | null",
+            IntegerColumnModel or BigIntColumnModel or DecimalColumnModel or DoubleColumnModel => "number | null",
+            MoneyColumnModel => "number | null",
+            BooleanColumnModel or BooleanManagedColumnModel => "boolean | null",
+            // WebApi returns dates as ISO 8601 strings, not Date objects.
+            DateTimeColumnModel => "string | null",
+            // Multi-select option sets are returned as a semicolon-delimited string.
+            EnumColumnModel { IsMultiSelect: true } => "string | null",
+            // Reference the generated enum type for type-safe option set usage.
+            EnumColumnModel enumCol => $"{enumCol.OptionsetName} | null",
+            FileColumnModel or ImageColumnModel => "string | null",
+            ManagedColumnModel managed => managed.ReturnType switch
+            {
+                "bool" or "Boolean" => "boolean | null",
+                "int" or "long" or "decimal" or "double" => "number | null",
+                _ => "string | null",
+            },
+            _ => "unknown",
+        };
     }
 
     private static void ClearExistingDeclarationFiles(string outputDirectory)

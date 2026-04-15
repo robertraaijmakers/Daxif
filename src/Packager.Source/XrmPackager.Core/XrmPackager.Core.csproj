@@ -22,7 +22,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Templates/**/*.scriban-cs" />
-    <EmbeddedResource Include="Templates/**/*.scriban-ts" />
     <EmbeddedResource Include="Templates/TypeScript/**/*" />
   </ItemGroup>
 </Project>
