@@ -48,6 +48,9 @@ class Program
                 case "xrmdt":
                     return HandleXrmDtCommand(args, logger);
 
+                case "masterdata":
+                    return HandleMasterDataCommand(args, logger);
+
                 default:
                     logger.Error($"Unknown command: {command}");
                     PrintUsage();
@@ -91,6 +94,8 @@ COMMANDS:
     solution publish     Publish all customizations
     context generate     Generate C# early-bound context
     xrmdt generate       Generate TypeScript definitions
+    masterdata export    Export master data to JSON files
+    masterdata import    Import master data from JSON files
     help                 Show this help message
 
 EXAMPLES:
@@ -99,6 +104,8 @@ EXAMPLES:
     xrmpackager plugin sync --assembly ./bin/Debug/MyPlugins.dll --solution MySolution --dry-run
     xrmpackager webresource sync --folder ./WebResources --solution MySolution
     xrmpackager webresource sync --folder ./WebResources --solution MySolution --dry-run
+    xrmpackager masterdata export --schema ./schema.xml --folder ./data
+    xrmpackager masterdata import --schema ./schema.xml --folder ./data
     xrmpackager solution import --zip ./MySolution.zip --publish
     xrmpackager context generate --out ./Generated/XrmContext.cs --namespace MyCompany.Crm
     xrmpackager xrmdt generate --out ./Generated/Xrm.d.ts --namespace Xrm
@@ -156,6 +163,12 @@ For more information, visit: https://github.com/XrmPackager/XrmPackager
     static int HandleXrmDtCommand(string[] args, ILogger logger)
     {
         var command = new XrmDefinitelyTypedGenerateCommand(logger);
+        return command.Execute(args);
+    }
+
+    static int HandleMasterDataCommand(string[] args, ILogger logger)
+    {
+        var command = new MasterDataCommand(logger);
         return command.Execute(args);
     }
 }
