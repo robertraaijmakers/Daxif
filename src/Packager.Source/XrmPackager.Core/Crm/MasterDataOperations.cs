@@ -604,6 +604,8 @@ public sealed class MasterDataOperations
         );
         foreach (var entityConfig in config.Entities)
         {
+            if (entityConfig.IsNNRelationship)
+                continue; // N:N intersect entities need no attribute metadata
             if (metaCache.ContainsKey(entityConfig.EntityName))
                 continue;
             var metaReq = new RetrieveEntityRequest
@@ -629,6 +631,8 @@ public sealed class MasterDataOperations
 
         foreach (var entityConfig in config.Entities)
         {
+            if (entityConfig.IsNNRelationship)
+                continue; // N:N intersect entities are not referenced by other entities
             if (!metaCache.TryGetValue(entityConfig.EntityName, out var metaEntry))
                 continue;
 
@@ -722,6 +726,12 @@ public sealed class MasterDataOperations
                 continue;
             }
 
+            if (entityConfig.IsNNRelationship)
+            {
+                ImportNNRelationship(client, entityConfig, guidMap, options);
+                continue;
+            }
+
             var entityFolder = Path.Combine(options.DataFolder, entityConfig.FolderName);
             if (!Directory.Exists(entityFolder))
             {
@@ -753,11 +763,24 @@ public sealed class MasterDataOperations
             var updated = 0;
             var skipped = 0;
 
-            foreach (var file in files)
+            // Parse all files upfront so we can sort them before importing.
+            var records = files
+                .Select(f => (File: f, Obj: ParseJsonFile(f)))
+                .Where(r => r.Obj is not null)
+                .Select(r => (r.File, Obj: r.Obj!))
+                .ToList();
+
+            // If the entity references itself (e.g. parent/child hierarchy),
+            // sort records topologically so parents are imported before children.
+            var selfRefField = FindSelfReferentialField(records, entityConfig.EntityName);
+            if (selfRefField is not null)
             {
-                var obj = ParseJsonFile(file);
-                if (obj is null)
-                    continue;
+                _logger.Info($"  Detected self-referential field '{selfRefField}', sorting topologically.");
+                records = SortTopologically(records, guidField, selfRefField);
+            }
+
+            foreach (var (_, obj) in records)
+            {
 
                 var sourceGuid = GetGuidFromJson(obj, guidField);
 
@@ -774,7 +797,12 @@ public sealed class MasterDataOperations
                 var entity = DeserializeJsonRecord(obj, entityConfig.EntityName, guidField, attrMeta, guidMap);
 
                 if (targetGuid != Guid.Empty)
+                {
                     entity.Id = targetGuid;
+                    // Keep the attribute bag in sync — Dataverse throws if entity.Id
+                    // and entity[primaryIdAttr] disagree.
+                    entity[guidField] = targetGuid;
+                }
 
                 // Change detection: skip the upsert when nothing actually changed.
                 if (targetGuid != Guid.Empty && existingRecords.TryGetValue(targetGuid, out var existing))
@@ -915,6 +943,210 @@ public sealed class MasterDataOperations
     // =========================================================================
     // Import helpers
     // =========================================================================
+
+    /// <summary>
+    /// Imports N:N relationship records using <c>AssociateRequest</c>.
+    /// Checks whether the relationship already exists before associating.
+    /// </summary>
+    private void ImportNNRelationship(
+        ServiceClient client,
+        MasterDataJsonEntityConfig entityConfig,
+        Dictionary<string, Dictionary<Guid, Guid>> guidMap,
+        MasterDataImportOptions options
+    )
+    {
+        if (entityConfig.Entity1 is null || entityConfig.Entity2 is null)
+        {
+            _logger.Info(
+                $"  Skipping N:N '{entityConfig.EntityName}': entity1 and entity2 must be configured in the schema."
+            );
+            return;
+        }
+
+        var entityFolder = Path.Combine(options.DataFolder, entityConfig.FolderName);
+        if (!Directory.Exists(entityFolder))
+        {
+            _logger.Info($"No data folder found for '{entityConfig.FolderName}', skipping.");
+            return;
+        }
+
+        var files = Directory.GetFiles(entityFolder, "*.json");
+        _logger.Info($"Importing {files.Length} N:N relationship(s) for {entityConfig.EntityName}");
+
+        // ── Pre-fetch all existing intersect rows in one paged query ──────────
+        // Build a HashSet<(Guid, Guid)> so existence checks are O(1) in-memory.
+        var field1 = entityConfig.Entity1.FieldName;
+        var field2 = entityConfig.Entity2.FieldName;
+
+        var existingPairs = new HashSet<(Guid, Guid)>();
+        var existingQuery = new QueryExpression(entityConfig.EntityName)
+        {
+            ColumnSet = new ColumnSet(field1, field2),
+            PageInfo = new PagingInfo { Count = 5000, PageNumber = 1 },
+        };
+        EntityCollection page;
+        do
+        {
+            page = client.RetrieveMultiple(existingQuery);
+            foreach (var record in page.Entities)
+            {
+                var g1 = record.Contains(field1) ? (Guid)record[field1] : Guid.Empty;
+                var g2 = record.Contains(field2) ? (Guid)record[field2] : Guid.Empty;
+                if (g1 != Guid.Empty && g2 != Guid.Empty)
+                    existingPairs.Add((g1, g2));
+            }
+            existingQuery.PageInfo.PageNumber++;
+            existingQuery.PageInfo.PagingCookie = page.PagingCookie;
+        }
+        while (page.MoreRecords);
+
+        // ── Process source files ──────────────────────────────────────────────
+        var associated = 0;
+        var skipped = 0;
+
+        foreach (var file in files)
+        {
+            var obj = ParseJsonFile(file);
+            if (obj is null)
+                continue;
+
+            var sourceGuid1 = GetGuidFromJson(obj, field1);
+            var sourceGuid2 = GetGuidFromJson(obj, field2);
+
+            if (sourceGuid1 == Guid.Empty || sourceGuid2 == Guid.Empty)
+            {
+                _logger.Info($"  Skipping record in '{entityConfig.FolderName}': could not read FK GUIDs.");
+                skipped++;
+                continue;
+            }
+
+            // Resolve GUIDs to their target-environment counterparts via the global GUID map.
+            // Falls back to the source GUID when the parent entity is not in the map
+            // (e.g. it uses the same GUIDs across environments).
+            var targetGuid1 = guidMap.TryGetValue(entityConfig.Entity1.EntityName, out var map1) && map1.TryGetValue(sourceGuid1, out var resolved1)
+                ? resolved1
+                : sourceGuid1;
+            var targetGuid2 = guidMap.TryGetValue(entityConfig.Entity2.EntityName, out var map2) && map2.TryGetValue(sourceGuid2, out var resolved2)
+                ? resolved2
+                : sourceGuid2;
+
+            if (existingPairs.Contains((targetGuid1, targetGuid2)))
+            {
+                skipped++;
+                continue;
+            }
+
+            if (!options.DryRun)
+            {
+                client.Execute(new AssociateRequest
+                {
+                    Target = new EntityReference(entityConfig.Entity1.EntityName, targetGuid1),
+                    RelatedEntities = new EntityReferenceCollection
+                    {
+                        new EntityReference(entityConfig.Entity2.EntityName, targetGuid2),
+                    },
+                    Relationship = new Relationship(entityConfig.EntityName),
+                });
+
+                // Keep the cache up to date so duplicates within the same run are caught.
+                existingPairs.Add((targetGuid1, targetGuid2));
+            }
+
+            associated++;
+        }
+
+        _logger.Info(
+            $"  {entityConfig.EntityName}: {associated} associated, {skipped} skipped (already exist)"
+        );
+    }
+
+    /// <summary>
+    /// Returns the first field name in any record that is a lookup back to the same entity,
+    /// indicating a self-referential hierarchy. Returns <c>null</c> when none found.
+    /// </summary>
+    private static string? FindSelfReferentialField(
+        List<(string File, JsonObject Obj)> records,
+        string entityName
+    )
+    {
+        foreach (var (_, obj) in records)
+        {
+            foreach (var (key, node) in obj)
+            {
+                if (
+                    node is JsonObject refObj
+                    && refObj["entityname"]?.GetValue<string>() is string en
+                    && en.Equals(entityName, StringComparison.OrdinalIgnoreCase)
+                )
+                    return key;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Topologically sorts records so that parents always precede their children.
+    /// Uses Kahn's algorithm. Any cycles or orphan references are appended at the end.
+    /// </summary>
+    private static List<(string File, JsonObject Obj)> SortTopologically(
+        List<(string File, JsonObject Obj)> records,
+        string guidField,
+        string selfRefField
+    )
+    {
+        var count = records.Count;
+
+        // Map source GUID → index in records list.
+        var guidToIndex = new Dictionary<Guid, int>();
+        for (var i = 0; i < count; i++)
+        {
+            var g = GetGuidFromJson(records[i].Obj, guidField);
+            if (g != Guid.Empty)
+                guidToIndex[g] = i;
+        }
+
+        var inDegree = new int[count];
+        var children = Enumerable.Range(0, count).Select(_ => new List<int>()).ToArray();
+
+        for (var i = 0; i < count; i++)
+        {
+            var refNode = records[i].Obj[selfRefField];
+            if (
+                refNode is JsonObject refObj
+                && refObj["id"]?.GetValue<string>() is string parentIdStr
+                && Guid.TryParse(parentIdStr, out var parentGuid)
+                && guidToIndex.TryGetValue(parentGuid, out var parentIndex)
+                && parentIndex != i // guard against pointing to itself
+            )
+            {
+                children[parentIndex].Add(i);
+                inDegree[i]++;
+            }
+        }
+
+        // Kahn's BFS topological sort.
+        var queue = new Queue<int>();
+        for (var i = 0; i < count; i++)
+            if (inDegree[i] == 0)
+                queue.Enqueue(i);
+
+        var sorted = new List<(string File, JsonObject Obj)>(count);
+        while (queue.Count > 0)
+        {
+            var idx = queue.Dequeue();
+            sorted.Add(records[idx]);
+            foreach (var child in children[idx])
+                if (--inDegree[child] == 0)
+                    queue.Enqueue(child);
+        }
+
+        // Append any remaining records (cycle members) so they are not lost.
+        for (var i = 0; i < count; i++)
+            if (inDegree[i] > 0)
+                sorted.Add(records[i]);
+
+        return sorted;
+    }
 
     private static JsonObject? ParseJsonFile(string filePath)
     {

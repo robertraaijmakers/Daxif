@@ -38,6 +38,23 @@ public sealed class MasterDataJsonEntityConfig
     public required string EntityName { get; set; }
 
     /// <summary>
+    /// When <c>true</c>, this entity is an N:N intersect table. During import it is
+    /// handled with <c>AssociateRequest</c> instead of <c>UpsertRequest</c>, and
+    /// existence is checked by querying both FK fields. Requires <see cref="Entity1"/>
+    /// and <see cref="Entity2"/> to be set.
+    /// </summary>
+    [JsonPropertyName("isNNRelationship")]
+    public bool IsNNRelationship { get; set; } = false;
+
+    /// <summary>First side of the N:N relationship (target of AssociateRequest).</summary>
+    [JsonPropertyName("entity1")]
+    public MasterDataNNEndpoint? Entity1 { get; set; }
+
+    /// <summary>Second side of the N:N relationship (related entity).</summary>
+    [JsonPropertyName("entity2")]
+    public MasterDataNNEndpoint? Entity2 { get; set; }
+
+    /// <summary>
     /// Optional folder name override. When set, exported files are placed under
     /// <c>{dataFolder}/{aliasName}/</c> instead of <c>{dataFolder}/{entityName}/</c>.
     /// </summary>
@@ -120,4 +137,19 @@ public sealed class MasterDataJsonEntityConfig
             excludes.Add(f);
         return (null, excludes);
     }
+}
+
+/// <summary>One side of an N:N relationship used during import.</summary>
+public sealed class MasterDataNNEndpoint
+{
+    /// <summary>Logical name of the entity on this side (e.g. <c>bol_advicetopic</c>).</summary>
+    [JsonPropertyName("entityName")]
+    public required string EntityName { get; set; }
+
+    /// <summary>
+    /// Name of the FK field in the intersect table that holds this entity's GUID
+    /// (e.g. <c>bol_advicetopicid</c>).
+    /// </summary>
+    [JsonPropertyName("fieldName")]
+    public required string FieldName { get; set; }
 }
