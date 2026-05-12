@@ -973,6 +973,8 @@ public sealed class MasterDataOperations
         var files = Directory.GetFiles(entityFolder, "*.json");
         _logger.Info($"Importing {files.Length} N:N relationship(s) for {entityConfig.EntityName}");
 
+        var relationshipSchemaName = ResolveNNRelationshipSchemaName(client, entityConfig);
+
         // ── Pre-fetch all existing intersect rows in one paged query ──────────
         // Build a HashSet<(Guid, Guid)> so existence checks are O(1) in-memory.
         var field1 = entityConfig.Entity1.FieldName;
@@ -990,8 +992,8 @@ public sealed class MasterDataOperations
             page = client.RetrieveMultiple(existingQuery);
             foreach (var record in page.Entities)
             {
-                var g1 = record.Contains(field1) ? (Guid)record[field1] : Guid.Empty;
-                var g2 = record.Contains(field2) ? (Guid)record[field2] : Guid.Empty;
+                var g1 = ReadGuidValue(record, field1);
+                var g2 = ReadGuidValue(record, field2);
                 if (g1 != Guid.Empty && g2 != Guid.Empty)
                     existingPairs.Add((g1, g2));
             }
@@ -1045,7 +1047,7 @@ public sealed class MasterDataOperations
                     {
                         new EntityReference(entityConfig.Entity2.EntityName, targetGuid2),
                     },
-                    Relationship = new Relationship(entityConfig.EntityName),
+                    Relationship = new Relationship(relationshipSchemaName),
                 });
 
                 // Keep the cache up to date so duplicates within the same run are caught.
@@ -1058,6 +1060,66 @@ public sealed class MasterDataOperations
         _logger.Info(
             $"  {entityConfig.EntityName}: {associated} associated, {skipped} skipped (already exist)"
         );
+    }
+
+    private string ResolveNNRelationshipSchemaName(
+        ServiceClient client,
+        MasterDataJsonEntityConfig entityConfig
+    )
+    {
+        if (entityConfig.Entity1 is null || entityConfig.Entity2 is null)
+            return entityConfig.EntityName;
+
+        var endpoint1 = entityConfig.Entity1.EntityName;
+        var endpoint2 = entityConfig.Entity2.EntityName;
+
+        foreach (var logicalName in new[] { endpoint1, endpoint2 }.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var req = new RetrieveEntityRequest
+            {
+                LogicalName = logicalName,
+                EntityFilters = EntityFilters.Relationships,
+                RetrieveAsIfPublished = false,
+            };
+
+            var resp = (RetrieveEntityResponse)client.Execute(req);
+            var rel = resp
+                .EntityMetadata
+                .ManyToManyRelationships?.FirstOrDefault(r =>
+                    string.Equals(r.IntersectEntityName, entityConfig.EntityName, StringComparison.OrdinalIgnoreCase)
+                    && (
+                        (
+                            string.Equals(r.Entity1LogicalName, endpoint1, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(r.Entity2LogicalName, endpoint2, StringComparison.OrdinalIgnoreCase)
+                        )
+                        || (
+                            string.Equals(r.Entity1LogicalName, endpoint2, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(r.Entity2LogicalName, endpoint1, StringComparison.OrdinalIgnoreCase)
+                        )
+                    )
+                );
+
+            if (!string.IsNullOrWhiteSpace(rel?.SchemaName))
+                return rel.SchemaName;
+        }
+
+        _logger.Info(
+            $"  Could not resolve relationship schema for intersect '{entityConfig.EntityName}', using intersect name as fallback."
+        );
+        return entityConfig.EntityName;
+    }
+
+    private static Guid ReadGuidValue(Entity record, string fieldName)
+    {
+        if (!record.Attributes.TryGetValue(fieldName, out var value) || value is null)
+            return Guid.Empty;
+
+        return value switch
+        {
+            Guid guid => guid,
+            EntityReference er => er.Id,
+            _ => Guid.Empty,
+        };
     }
 
     /// <summary>
