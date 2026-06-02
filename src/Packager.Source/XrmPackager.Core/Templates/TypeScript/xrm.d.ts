@@ -382,7 +382,7 @@
     getSelectedOption(): Option<T> | null;
   }
 
-  type ControlType = "standard" | "iframe" | "lookup" | "optionset" | "subgrid" | "webresource" | "notes" | "timercontrol" | "kbsearch" | "multiselectoptionset";
+  type ControlType = "standard" | "iframe" | "kbsearch" | "lookup" | "choices" |  "choice" | "subgrid" | "webresource" | "notes" | "timercontrol" | "quickform" | "formcomponent";
 
   /**
    * Interface for a standard form control.
