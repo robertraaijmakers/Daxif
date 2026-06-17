@@ -3021,7 +3021,7 @@ declare namespace Xrm {
 
     interface userSettings {
         /**
-         * The name of the current user.
+         * Returns the date formatting information for the current user.
          */
         dateFormattingInfo: dateFormattingInfo;
 
@@ -3031,24 +3031,56 @@ declare namespace Xrm {
         defaultDashboardId: string;
 
         /**
-         * Indicates whether high contrast is enabled for the current user.
+         * Whether guided help is enabled for the current user.
          */
         isGuidedHelpEnabled: boolean;
 
         /**
-         * Indicates whether guided help is enabled for the current user..
+         * Whether high contrast is enabled for the current user.
          */
         isHighContrastEnabled: boolean;
 
         /**
-         * Indicates whether the language for the current user is a right-to-left (RTL) language.
+         * Whether the language for the current user is a right-to-left (RTL) language.
          */
         isRTL: boolean;
 
         /**
-         * The LCID value that represents the provisioned language that the user selected as their preferred language.
+         * The LCID language code for the current user.
          */
         languageId: number;
+
+        /**
+         * A collection of lookup objects containing the GUID and display name of each of the security role assigned to the user and any security roles assigned to the team that the user is associated with.
+         * Supported only on Unified Interface.
+         */
+        roles: Collection<Role>;
+
+        /**
+         * An array of strings that represent the GUID values of each of the security role privilege that the user is associated with or any teams that the user is associated with.
+         */
+        securityRolePrivileges: string[];
+
+        /**
+         * @deprecated Use the roles property.
+         */
+        securityRoles: string[];
+
+        /**
+         * Object containing the id, name, and entityType of the transaction currency for the current user.
+         * Supported only on Unified Interface.
+         */
+        transactionCurrency: Lookup;
+
+        /**
+         * @deprecated Use the transactionCurrency property.
+         */
+        transactionCurrencyId: string;
+
+        /**
+         * The systemuser.systemuserid value of the current user.
+         */
+        userId: string;
 
         /**
          * The name of the current user.
@@ -3056,31 +3088,86 @@ declare namespace Xrm {
         userName: string;
 
         /**
+         * Returns a promise which resolves with an object whose keys are the security role privilege GUIDs and values are objects containing the businessUnitId, depth, and privilegeName of the security role privilege.
+         */
+        getSecurityRolePrivilegesInfo(): Promise<{ [key: string]: { id: string; businessUnitId: string; privilegeName: string; depth: number } }>;
+
+        /**
          * Returns the difference between the local time and Coordinated Universal Time (UTC).
          */
         getTimeZoneOffsetMinutes(): number;
-
-        /**
-         * The GUID of the SystemUser.Id value for the current user.
-         */
-        userId: string;
     }
 
     interface organizationSettings {
-        /**
-         * Returns whether Autosave is enabled for the organization.
-         */
-        getIsAutoSaveEnabled(): boolean;
+      /**
+       * An object with columns and their values as key:value pairs that are available for the organization table.
+       * The key is the column logical name.
+       */
+      attributes: { [key: string]: any };
 
-        /**
-         * The language code identifier (LCID) value that represents the base language for the organization.
-         */
-        languageId: number;
+      /**
+       * @deprecated Use baseCurrency property instead.
+       */
+      baseCurrencyId: string;
 
-        /**
-         * The unique text value of the organization?s name.
-         */
-        uniqueName: string;
+      /**
+       * Object containing the id, name, and entityType of the base currency for the current organization.
+       * Supported only on Unified Interface.
+       */
+      baseCurrency: Xrm.Lookup;
+
+      /**
+       * The default country/region code for phone numbers for the current organization.
+       */
+      defaultCountryCode: string;
+
+      /**
+       * Whether the auto-save option is enabled for the current organization.
+       */
+      isAutoSaveEnabled: boolean;
+
+      /**
+       * The preferred LCID language code for the current organization.
+       */
+      languageId: number;
+
+      /**
+       * ID of the current organization.
+       */
+      organizationId: string;
+
+      /**
+       * Whether the organization is a trial environment.
+       */
+      isTrialOrganization: boolean;
+
+      /**
+       * The expiry date of the current organization if it's a trial environment, otherwise null.
+       */
+      organizationExpiryDate: Date | null;
+
+      /**
+       * The unique name of the current organization.
+       */
+      uniqueName: string;
+
+      /**
+       * Whether the Skype protocol is used for the current organization.
+       */
+      useSkypeProtocol: boolean;
+
+      /**
+       * The FullNameConventionCode setting of the current organization.
+       * 0: LastName, FirstName
+       * 1: FirstName LastName
+       * 2: LastName, FirstName MiddleInitial
+       * 3: FirstName MiddleInitial LastName
+       * 4: LastName, FirstName MiddleName
+       * 5: FirstName MiddleName LastName
+       * 6: LastName FirstName
+       * 7: LastNameFirstName
+       */
+      fullNameConventionCode: number;
     }
 
     interface appProperties {
@@ -3596,20 +3683,6 @@ declare namespace Xrm {
     interface Role {
         id: string;
         name: string;
-    }
-
-    interface userSettings {
-        /**
-         * Collection of lookup-like objects containing the GUID and display name of each of the security role or teams
-         * that the user is associated with.
-         */
-        roles: Collection<Role>;
-
-        /**
-         * Returns an array of strings that represent the GUID values of each of the security role privilege that the
-         * user is associated with or any teams that the user is associated with.
-         */
-        securityRolePrivileges: string[]
     }
 
     /**
