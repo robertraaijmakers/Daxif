@@ -862,9 +862,9 @@ internal static class TypeScriptLegacyArtifactGenerator
                 : "Xrm.MultiSelectOptionSetControl<number>",
             FormControlKind.Number => "Xrm.NumberControl",
             FormControlKind.String => "Xrm.StringControl",
-            FormControlKind.WebResource
-            or FormControlKind.IFrame
-            or FormControlKind.KnowledgeBaseSearch => "Xrm.BaseControl",
+            FormControlKind.WebResource => "Xrm.WebResourceControl",
+            FormControlKind.IFrame => "Xrm.IFrameControl",
+            FormControlKind.KnowledgeBaseSearch => "Xrm.BaseControl",
             _ => ResolveFallbackControlType(
                 table,
                 control.AttributeName,
