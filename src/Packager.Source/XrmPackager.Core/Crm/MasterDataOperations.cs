@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
@@ -79,7 +80,7 @@ public sealed class MasterDataOperations
         do
         {
             results = client.RetrieveMultiple(query);
-            WriteRecords(results, entitySchema, outputFolder, ref recordCount);
+            WriteRecords(client, results, entitySchema, outputFolder, ref recordCount);
             query.PageInfo.PageNumber++;
             query.PageInfo.PagingCookie = results.PagingCookie;
         } while (results.MoreRecords);
@@ -94,12 +95,11 @@ public sealed class MasterDataOperations
         string[] fieldNames
     )
     {
-        // Parse the stored FetchXML and extract the <filter> element(s) from it
         var filterDoc = XDocument.Parse(entitySchema.FetchXmlFilter!);
         var filterElements = filterDoc.Root
             ?.Element("entity")
             ?.Elements("filter")
-            .Select(f => new XElement(f)) // deep-copy
+            .Select(f => new XElement(f))
             .ToList() ?? new List<XElement>();
 
         var recordCount = 0;
@@ -116,7 +116,7 @@ public sealed class MasterDataOperations
                 pagingCookie
             );
             var results = client.RetrieveMultiple(new FetchExpression(fetchXml));
-            WriteRecords(results, entitySchema, outputFolder, ref recordCount);
+            WriteRecords(client, results, entitySchema, outputFolder, ref recordCount);
 
             if (!results.MoreRecords)
                 break;
@@ -161,42 +161,104 @@ public sealed class MasterDataOperations
     }
 
     private void WriteRecords(
+        ServiceClient client,
         EntityCollection results,
         MasterDataEntitySchema entitySchema,
         string outputFolder,
         ref int recordCount
     )
     {
+        var fileFields = entitySchema.Fields.Where(f => f.Type == "file").ToList();
+
         foreach (var record in results.Entities)
         {
-            var json = SerializeRecord(record, entitySchema);
+            var obj = new JsonObject();
+
+            foreach (var field in entitySchema.Fields)
+            {
+                record.Attributes.TryGetValue(field.Name, out var rawValue);
+
+                if (field.Type == "file")
+                {
+                    obj[field.Name] = rawValue is not null
+                        ? DownloadAndSaveFile(client, record, field.Name, outputFolder)
+                        : null;
+                    continue;
+                }
+
+                obj[field.Name] = rawValue is null ? null : SerializeValue(rawValue, field.Type);
+            }
+
             var filePath = Path.Combine(outputFolder, $"{record.Id}.json");
-            File.WriteAllText(filePath, json);
+            File.WriteAllText(filePath, JsonSerializer.Serialize(obj, JsonWriteOptions));
             recordCount++;
         }
     }
 
-    private static string SerializeRecord(Entity record, MasterDataEntitySchema schema)
+    private JsonNode? DownloadAndSaveFile(
+        ServiceClient client,
+        Entity record,
+        string fieldName,
+        string outputFolder
+    )
     {
-        var obj = new JsonObject();
-
-        foreach (var field in schema.Fields)
+        try
         {
-            if (!record.Attributes.TryGetValue(field.Name, out var rawValue) || rawValue is null)
+            var initResp = (InitializeFileBlocksDownloadResponse)client.Execute(
+                new InitializeFileBlocksDownloadRequest
+                {
+                    Target = record.ToEntityReference(),
+                    FileAttributeName = fieldName,
+                }
+            );
+
+            var token = initResp.FileContinuationToken;
+            var fileSize = initResp.FileSizeInBytes;
+            var fileName = initResp.FileName;
+
+            var allBytes = new List<byte>((int)Math.Min(fileSize, int.MaxValue));
+            const long chunkSize = 4 * 1024 * 1024;
+            long offset = 0;
+            while (offset < fileSize)
             {
-                obj[field.Name] = null;
-                continue;
+                var blockResp = (DownloadBlockResponse)client.Execute(
+                    new DownloadBlockRequest
+                    {
+                        FileContinuationToken = token,
+                        Offset = offset,
+                        BlockLength = Math.Min(chunkSize, fileSize - offset),
+                    }
+                );
+                allBytes.AddRange(blockResp.Data);
+                offset += blockResp.Data.LongLength;
             }
 
-            obj[field.Name] = SerializeValue(rawValue, field.Type);
-        }
+            var relativeDir = Path.Combine("_files", record.Id.ToString(), fieldName);
+            var absoluteDir = Path.Combine(outputFolder, relativeDir);
+            Directory.CreateDirectory(absoluteDir);
+            File.WriteAllBytes(Path.Combine(absoluteDir, fileName), allBytes.ToArray());
 
-        return JsonSerializer.Serialize(obj, JsonWriteOptions);
+            var relativePath = (relativeDir + Path.DirectorySeparatorChar + fileName)
+                .Replace(Path.DirectorySeparatorChar, '/');
+
+            return new JsonObject
+            {
+                ["__type"] = "file",
+                ["fileName"] = fileName,
+                ["path"] = relativePath,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.Info(
+                $"  Warning: Could not download file for field '{fieldName}' on record '{record.Id}': {ex.Message}"
+            );
+            return null;
+        }
     }
 
     private static JsonNode? SerializeValue(object value, string fieldType)
     {
-        // Dispatch on runtime type first — avoids schema mismatches (e.g. statecode/statuscode)
         return value switch
         {
             OptionSetValue osv => JsonValue.Create(osv.Value),
@@ -267,9 +329,8 @@ public sealed class MasterDataOperations
             foreach (var file in files)
             {
                 var json = File.ReadAllText(file);
-                var entity = DeserializeRecord(json, entitySchema);
+                var (entity, filesToUpload) = DeserializeRecord(json, entitySchema);
 
-                // Try alternate-key match first (non-primary fields with updateCompare=true)
                 var altKeyField = entitySchema.Fields.FirstOrDefault(f =>
                     f.UpdateCompare && !f.IsPrimaryKey
                 );
@@ -288,17 +349,17 @@ public sealed class MasterDataOperations
                     );
                     if (existing is not null)
                     {
-                        // Update the existing record (preserve its environment GUID)
                         entity.Id = existing.Id;
                         client.Update(entity);
+                        UploadFiles(client, entitySchema.Name, entity.Id, filesToUpload, entityFolder);
                         updated++;
                         continue;
                     }
                 }
 
-                // Upsert by GUID: creates with the stored GUID if absent, updates if present
                 var upsertRequest = new UpsertRequest { Target = entity };
                 var upsertResponse = (UpsertResponse)client.Execute(upsertRequest);
+                UploadFiles(client, entitySchema.Name, entity.Id, filesToUpload, entityFolder);
 
                 if (upsertResponse.RecordCreated)
                 {
@@ -316,18 +377,138 @@ public sealed class MasterDataOperations
         }
     }
 
-    private static Entity DeserializeRecord(string json, MasterDataEntitySchema schema)
+    private void UploadFiles(
+        ServiceClient client,
+        string entityName,
+        Guid recordId,
+        List<(string FieldName, string RelativePath, string FileName)> files,
+        string baseFolder
+    )
+    {
+        foreach (var (fieldName, relativePath, fileName) in files)
+        {
+            var absolutePath = Path.Combine(
+                baseFolder,
+                relativePath.Replace('/', Path.DirectorySeparatorChar)
+            );
+            if (!File.Exists(absolutePath))
+            {
+                _logger.Info($"  Warning: File not found for field '{fieldName}': {absolutePath}");
+                continue;
+            }
+
+            try
+            {
+                UploadFileContent(client, entityName, recordId, fieldName, fileName, File.ReadAllBytes(absolutePath));
+            }
+            catch (Exception ex)
+            {
+                _logger.Info(
+                    $"  Warning: Could not upload file for field '{fieldName}' on record '{recordId}': {ex.Message}"
+                );
+            }
+        }
+    }
+
+    private void UploadFileContent(
+        ServiceClient client,
+        string entityName,
+        Guid recordId,
+        string fieldName,
+        string fileName,
+        byte[] fileContent
+    )
+    {
+        if (fileContent.Length == 0)
+        {
+            _logger.Info($"  Warning: Skipping upload of empty file '{fileName}' for field '{fieldName}'.");
+            return;
+        }
+
+        var initResp = (InitializeFileBlocksUploadResponse)client.Execute(
+            new InitializeFileBlocksUploadRequest
+            {
+                Target = new EntityReference(entityName, recordId),
+                FileAttributeName = fieldName,
+                FileName = fileName,
+            }
+        );
+
+        var token = initResp.FileContinuationToken;
+        const int chunkSize = 4 * 1024 * 1024;
+        var blockIds = new List<string>();
+
+        for (int offset = 0, blockIndex = 0; offset < fileContent.Length; offset += chunkSize, blockIndex++)
+        {
+            var blockSize = Math.Min(chunkSize, fileContent.Length - offset);
+            var block = new byte[blockSize];
+            Array.Copy(fileContent, offset, block, 0, blockSize);
+
+            // Block IDs must be unique, consistent-length base64 strings.
+            var blockId = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(blockIndex.ToString("D8")));
+            blockIds.Add(blockId);
+
+            client.Execute(new UploadBlockRequest
+            {
+                FileContinuationToken = token,
+                BlockId = blockId,
+                BlockData = block,
+            });
+        }
+
+        client.Execute(new CommitFileBlocksUploadRequest
+        {
+            FileContinuationToken = token,
+            FileName = fileName,
+            MimeType = DetermineMimeType(fileName),
+            BlockList = blockIds.ToArray(),
+        });
+    }
+
+    private static string DetermineMimeType(string fileName) =>
+        Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".txt" => "text/plain",
+            ".xml" => "application/xml",
+            ".json" => "application/json",
+            ".zip" => "application/zip",
+            _ => "application/octet-stream",
+        };
+
+    private static (Entity entity, List<(string FieldName, string RelativePath, string FileName)> FilesToUpload)
+    DeserializeRecord(string json, MasterDataEntitySchema schema)
     {
         var obj =
             JsonNode.Parse(json)?.AsObject()
             ?? throw new InvalidOperationException("Invalid JSON record.");
 
         var entity = new Entity(schema.Name);
+        var filesToUpload = new List<(string, string, string)>();
 
         foreach (var field in schema.Fields)
         {
             if (!obj.TryGetPropertyValue(field.Name, out var node) || node is null)
             {
+                continue;
+            }
+
+            if (field.Type == "file")
+            {
+                if (node is JsonObject fileObj)
+                {
+                    var path = fileObj["path"]?.GetValue<string>();
+                    var fileName = fileObj["fileName"]?.GetValue<string>();
+                    if (path is not null && fileName is not null)
+                        filesToUpload.Add((field.Name, path, fileName));
+                }
                 continue;
             }
 
@@ -345,7 +526,7 @@ public sealed class MasterDataOperations
             entity[field.Name] = value;
         }
 
-        return entity;
+        return (entity, filesToUpload);
     }
 
     private static object? DeserializeValue(
@@ -441,6 +622,9 @@ public sealed class MasterDataOperations
                 config.DefaultExcludedFields
             );
 
+            // Detect file attributes via metadata so we can handle them specially.
+            var fileFieldNames = LoadFileAttributeNames(client, entityConfig.EntityName);
+
             int recordCount;
 
             if (entityConfig.IsFetchXmlFilter)
@@ -457,12 +641,12 @@ public sealed class MasterDataOperations
                     outputFolder,
                     explicitIncludes,
                     effectiveExcludes,
-                    filterElements
+                    filterElements,
+                    fileFieldNames
                 );
             }
             else if (entityConfig.HasFilter)
             {
-                // Convert OData filter string to FetchXML
                 var filterEl = ConvertODataToFetchXmlFilter(entityConfig.Filter!);
                 recordCount = ExportJsonWithFetchXmlFilters(
                     client,
@@ -470,12 +654,12 @@ public sealed class MasterDataOperations
                     outputFolder,
                     explicitIncludes,
                     effectiveExcludes,
-                    new List<XElement> { filterEl }
+                    new List<XElement> { filterEl },
+                    fileFieldNames
                 );
             }
             else
             {
-                // No filter — QueryExpression
                 var query = new QueryExpression(entityConfig.EntityName)
                 {
                     ColumnSet = explicitIncludes != null
@@ -490,10 +674,12 @@ public sealed class MasterDataOperations
                 {
                     qResults = client.RetrieveMultiple(query);
                     WriteJsonRecords(
+                        client,
                         qResults,
                         outputFolder,
                         explicitIncludes,
                         effectiveExcludes,
+                        fileFieldNames,
                         ref recordCount
                     );
                     query.PageInfo.PageNumber++;
@@ -505,13 +691,36 @@ public sealed class MasterDataOperations
         }
     }
 
+    private static HashSet<string> LoadFileAttributeNames(ServiceClient client, string entityName)
+    {
+        try
+        {
+            var metaReq = new RetrieveEntityRequest
+            {
+                LogicalName = entityName,
+                EntityFilters = EntityFilters.Attributes,
+                RetrieveAsIfPublished = false,
+            };
+            var metaResp = (RetrieveEntityResponse)client.Execute(metaReq);
+            return metaResp.EntityMetadata.Attributes
+                .Where(a => a is FileAttributeMetadata)
+                .Select(a => a.LogicalName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private int ExportJsonWithFetchXmlFilters(
         ServiceClient client,
         string entityName,
         string outputFolder,
         HashSet<string>? explicitIncludes,
         HashSet<string> effectiveExcludes,
-        List<XElement> filterElements
+        List<XElement> filterElements,
+        HashSet<string> fileFieldNames
     )
     {
         var recordCount = 0;
@@ -545,7 +754,7 @@ public sealed class MasterDataOperations
             fetchEl.Add(entityEl);
 
             var results = client.RetrieveMultiple(new FetchExpression(fetchEl.ToString()));
-            WriteJsonRecords(results, outputFolder, explicitIncludes, effectiveExcludes, ref recordCount);
+            WriteJsonRecords(client, results, outputFolder, explicitIncludes, effectiveExcludes, fileFieldNames, ref recordCount);
 
             if (!results.MoreRecords)
                 break;
@@ -557,10 +766,12 @@ public sealed class MasterDataOperations
     }
 
     private void WriteJsonRecords(
+        ServiceClient client,
         EntityCollection results,
         string outputFolder,
         HashSet<string>? includeFields,
         HashSet<string> excludeFields,
+        HashSet<string> fileFieldNames,
         ref int recordCount
     )
     {
@@ -580,7 +791,15 @@ public sealed class MasterDataOperations
                     if (excludeFields.Contains(key))
                         continue;
                 }
-                obj[key] = attr.Value is null ? null : SerializeValue(attr.Value, "");
+
+                if (fileFieldNames.Contains(key) && attr.Value is not null)
+                {
+                    obj[key] = DownloadAndSaveFile(client, record, key, outputFolder);
+                }
+                else
+                {
+                    obj[key] = attr.Value is null ? null : SerializeValue(attr.Value, "");
+                }
             }
 
             var filePath = Path.Combine(outputFolder, $"{record.Id}.json");
@@ -605,7 +824,7 @@ public sealed class MasterDataOperations
         foreach (var entityConfig in config.Entities)
         {
             if (entityConfig.IsNNRelationship)
-                continue; // N:N intersect entities need no attribute metadata
+                continue;
             if (metaCache.ContainsKey(entityConfig.EntityName))
                 continue;
             var metaReq = new RetrieveEntityRequest
@@ -623,16 +842,13 @@ public sealed class MasterDataOperations
         }
 
         // ── Phase 2: build source→target GUID map ─────────────────────────────
-        // For GUID-keyed entities: identity mapping (source GUID == target GUID).
-        // For alternate-keyed entities: batch-query target by key value, map
-        // sourceGuid → targetGuid so references are rewritten during import.
         _logger.Info("Building GUID resolution map...");
         var guidMap = new Dictionary<string, Dictionary<Guid, Guid>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entityConfig in config.Entities)
         {
             if (entityConfig.IsNNRelationship)
-                continue; // N:N intersect entities are not referenced by other entities
+                continue;
             if (!metaCache.TryGetValue(entityConfig.EntityName, out var metaEntry))
                 continue;
 
@@ -653,7 +869,6 @@ public sealed class MasterDataOperations
 
             if (isGuidKey)
             {
-                // Identity mapping: source GUID is used as-is in the target environment.
                 foreach (var file in files)
                 {
                     var obj = ParseJsonFile(file);
@@ -666,8 +881,6 @@ public sealed class MasterDataOperations
             }
             else
             {
-                // Alternate-key matching: collect key values from source files, then
-                // batch-query the target environment to resolve source→target GUIDs.
                 var sourcePairs = new List<(Guid sourceGuid, string keyValue)>();
                 foreach (var file in files)
                 {
@@ -682,7 +895,6 @@ public sealed class MasterDataOperations
                         sourcePairs.Add((sourceGuid, keyValue));
                 }
 
-                // Batch-query target in groups of 500
                 var allKeyValues = sourcePairs.Select(p => (object)p.keyValue).ToArray();
                 var keyToTargetGuid = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
@@ -709,7 +921,6 @@ public sealed class MasterDataOperations
                 {
                     if (keyToTargetGuid.TryGetValue(keyValue, out var targetGuid))
                         entityGuidMap[sourceGuid] = targetGuid;
-                    // Not found → record will be created; no mapping entry needed.
                 }
             }
         }
@@ -752,7 +963,6 @@ public sealed class MasterDataOperations
 
             guidMap.TryGetValue(entityConfig.EntityName, out var entityGuidMap);
 
-            // Pre-fetch existing records so we can detect changes without extra round-trips.
             var targetGuids = entityGuidMap?.Values.Distinct().ToList() ?? new List<Guid>();
             var (explicitIncludes, _) = entityConfig.ResolveFields(config.DefaultExcludedFields);
             var existingRecords = FetchExistingByGuids(
@@ -763,15 +973,12 @@ public sealed class MasterDataOperations
             var updated = 0;
             var skipped = 0;
 
-            // Parse all files upfront so we can sort them before importing.
             var records = files
                 .Select(f => (File: f, Obj: ParseJsonFile(f)))
                 .Where(r => r.Obj is not null)
                 .Select(r => (r.File, Obj: r.Obj!))
                 .ToList();
 
-            // If the entity references itself (e.g. parent/child hierarchy),
-            // sort records topologically so parents are imported before children.
             var selfRefField = FindSelfReferentialField(records, entityConfig.EntityName);
             if (selfRefField is not null)
             {
@@ -781,34 +988,30 @@ public sealed class MasterDataOperations
 
             foreach (var (_, obj) in records)
             {
-
                 var sourceGuid = GetGuidFromJson(obj, guidField);
 
-                // Resolve source GUID to its counterpart in the target environment.
                 Guid targetGuid;
                 if (entityGuidMap is not null && entityGuidMap.TryGetValue(sourceGuid, out var mappedGuid))
                     targetGuid = mappedGuid;
                 else if (isGuidKey)
                     targetGuid = sourceGuid;
                 else
-                    targetGuid = Guid.Empty; // record not found → will be created
+                    targetGuid = Guid.Empty;
 
-                // Deserialize, resolving all entity references through the GUID map.
-                var entity = DeserializeJsonRecord(obj, entityConfig.EntityName, guidField, attrMeta, guidMap);
+                var (entity, filesToUpload) = DeserializeJsonRecord(
+                    obj, entityConfig.EntityName, guidField, attrMeta, guidMap
+                );
 
                 if (targetGuid != Guid.Empty)
                 {
                     entity.Id = targetGuid;
-                    // Keep the attribute bag in sync — Dataverse throws if entity.Id
-                    // and entity[primaryIdAttr] disagree.
                     entity[guidField] = targetGuid;
                 }
 
-                // Change detection: skip the upsert when nothing actually changed.
                 if (targetGuid != Guid.Empty && existingRecords.TryGetValue(targetGuid, out var existing))
                 {
                     var changedFields = CollectChanges(entity, existing);
-                    if (changedFields.Count == 0)
+                    if (changedFields.Count == 0 && filesToUpload.Count == 0)
                     {
                         skipped++;
                         continue;
@@ -818,6 +1021,8 @@ public sealed class MasterDataOperations
                         _logger.Info($"    [CHANGES] {entityConfig.EntityName} ({targetGuid}):");
                         foreach (var f in changedFields)
                             _logger.Info($"      {f}");
+                        if (filesToUpload.Count > 0)
+                            _logger.Info($"      (+ {filesToUpload.Count} file field(s))");
                     }
                     updated++;
                 }
@@ -827,7 +1032,10 @@ public sealed class MasterDataOperations
                 }
 
                 if (!options.DryRun)
+                {
                     client.Execute(new UpsertRequest { Target = entity });
+                    UploadFiles(client, entityConfig.EntityName, entity.Id, filesToUpload, entityFolder);
+                }
             }
 
             _logger.Info(
@@ -836,7 +1044,8 @@ public sealed class MasterDataOperations
         }
     }
 
-    private static Entity DeserializeJsonRecord(
+    private static (Entity entity, List<(string FieldName, string RelativePath, string FileName)> FilesToUpload)
+    DeserializeJsonRecord(
         JsonObject obj,
         string entityName,
         string primaryIdAttr,
@@ -845,6 +1054,7 @@ public sealed class MasterDataOperations
     )
     {
         var entity = new Entity(entityName);
+        var filesToUpload = new List<(string, string, string)>();
 
         foreach (var (key, node) in obj)
         {
@@ -852,6 +1062,20 @@ public sealed class MasterDataOperations
                 continue;
             if (!attrMeta.TryGetValue(key, out var meta))
                 continue;
+            // File attributes are uploaded separately after the record is created/updated.
+            // Check this before the IsValidForCreate/Update guard — file attrs have both false.
+            if (meta is FileAttributeMetadata)
+            {
+                if (node is JsonObject fileObj)
+                {
+                    var path = fileObj["path"]?.GetValue<string>();
+                    var fileName = fileObj["fileName"]?.GetValue<string>();
+                    if (path is not null && fileName is not null)
+                        filesToUpload.Add((key, path, fileName));
+                }
+                continue;
+            }
+
             if (meta.IsValidForCreate == false && meta.IsValidForUpdate == false)
                 continue;
 
@@ -859,7 +1083,6 @@ public sealed class MasterDataOperations
             if (value is null)
                 continue;
 
-            // Rewrite EntityReference GUIDs to their target-environment counterparts.
             if (
                 value is EntityReference er
                 && er.Id != Guid.Empty
@@ -879,12 +1102,11 @@ public sealed class MasterDataOperations
             entity[key] = value;
         }
 
-        return entity;
+        return (entity, filesToUpload);
     }
 
     private static object? MapJsonValueToSdkType(JsonNode node, AttributeMetadata meta)
     {
-        // EntityReference (lookup / owner / customer)
         if (node is JsonObject refObj)
         {
             var idStr = refObj["id"]?.GetValue<string>();
@@ -897,7 +1119,6 @@ public sealed class MasterDataOperations
             return new EntityReference(refEntityName, refId);
         }
 
-        // Multi-select option set
         if (node is JsonArray arr)
         {
             var values = arr
@@ -944,10 +1165,6 @@ public sealed class MasterDataOperations
     // Import helpers
     // =========================================================================
 
-    /// <summary>
-    /// Imports N:N relationship records using <c>AssociateRequest</c>.
-    /// Checks whether the relationship already exists before associating.
-    /// </summary>
     private void ImportNNRelationship(
         ServiceClient client,
         MasterDataJsonEntityConfig entityConfig,
@@ -975,8 +1192,6 @@ public sealed class MasterDataOperations
 
         var relationshipSchemaName = ResolveNNRelationshipSchemaName(client, entityConfig);
 
-        // ── Pre-fetch all existing intersect rows in one paged query ──────────
-        // Build a HashSet<(Guid, Guid)> so existence checks are O(1) in-memory.
         var field1 = entityConfig.Entity1.FieldName;
         var field2 = entityConfig.Entity2.FieldName;
 
@@ -1002,7 +1217,6 @@ public sealed class MasterDataOperations
         }
         while (page.MoreRecords);
 
-        // ── Process source files ──────────────────────────────────────────────
         var associated = 0;
         var skipped = 0;
 
@@ -1022,9 +1236,6 @@ public sealed class MasterDataOperations
                 continue;
             }
 
-            // Resolve GUIDs to their target-environment counterparts via the global GUID map.
-            // Falls back to the source GUID when the parent entity is not in the map
-            // (e.g. it uses the same GUIDs across environments).
             var targetGuid1 = guidMap.TryGetValue(entityConfig.Entity1.EntityName, out var map1) && map1.TryGetValue(sourceGuid1, out var resolved1)
                 ? resolved1
                 : sourceGuid1;
@@ -1050,7 +1261,6 @@ public sealed class MasterDataOperations
                     Relationship = new Relationship(relationshipSchemaName),
                 });
 
-                // Keep the cache up to date so duplicates within the same run are caught.
                 existingPairs.Add((targetGuid1, targetGuid2));
             }
 
@@ -1122,10 +1332,6 @@ public sealed class MasterDataOperations
         };
     }
 
-    /// <summary>
-    /// Returns the first field name in any record that is a lookup back to the same entity,
-    /// indicating a self-referential hierarchy. Returns <c>null</c> when none found.
-    /// </summary>
     private static string? FindSelfReferentialField(
         List<(string File, JsonObject Obj)> records,
         string entityName
@@ -1146,10 +1352,6 @@ public sealed class MasterDataOperations
         return null;
     }
 
-    /// <summary>
-    /// Topologically sorts records so that parents always precede their children.
-    /// Uses Kahn's algorithm. Any cycles or orphan references are appended at the end.
-    /// </summary>
     private static List<(string File, JsonObject Obj)> SortTopologically(
         List<(string File, JsonObject Obj)> records,
         string guidField,
@@ -1158,7 +1360,6 @@ public sealed class MasterDataOperations
     {
         var count = records.Count;
 
-        // Map source GUID → index in records list.
         var guidToIndex = new Dictionary<Guid, int>();
         for (var i = 0; i < count; i++)
         {
@@ -1178,7 +1379,7 @@ public sealed class MasterDataOperations
                 && refObj["id"]?.GetValue<string>() is string parentIdStr
                 && Guid.TryParse(parentIdStr, out var parentGuid)
                 && guidToIndex.TryGetValue(parentGuid, out var parentIndex)
-                && parentIndex != i // guard against pointing to itself
+                && parentIndex != i
             )
             {
                 children[parentIndex].Add(i);
@@ -1186,7 +1387,6 @@ public sealed class MasterDataOperations
             }
         }
 
-        // Kahn's BFS topological sort.
         var queue = new Queue<int>();
         for (var i = 0; i < count; i++)
             if (inDegree[i] == 0)
@@ -1202,7 +1402,6 @@ public sealed class MasterDataOperations
                     queue.Enqueue(child);
         }
 
-        // Append any remaining records (cycle members) so they are not lost.
         for (var i = 0; i < count; i++)
             if (inDegree[i] > 0)
                 sorted.Add(records[i]);
@@ -1224,10 +1423,6 @@ public sealed class MasterDataOperations
         return Guid.Empty;
     }
 
-    /// <summary>
-    /// Batch-fetches existing records by a list of target GUIDs.
-    /// Queries are sent in groups of 500 to stay within Dataverse IN-clause limits.
-    /// </summary>
     private static Dictionary<Guid, Entity> FetchExistingByGuids(
         ServiceClient client,
         string entityName,
@@ -1264,10 +1459,6 @@ public sealed class MasterDataOperations
         return result;
     }
 
-    /// <summary>
-    /// Returns the names of fields in <paramref name="incoming"/> that differ from
-    /// <paramref name="existing"/>. An empty list means no changes.
-    /// </summary>
     private static List<string> CollectChanges(Entity incoming, Entity existing)
     {
         var changed = new List<string>();
@@ -1309,7 +1500,6 @@ public sealed class MasterDataOperations
     {
         var filter = odataFilter.Trim();
 
-        // Top-level "and" split (evaluated before "or" — no parentheses nesting supported)
         var andParts = SplitODataLogical(filter, "and");
         if (andParts.Count > 1)
         {
@@ -1335,15 +1525,12 @@ public sealed class MasterDataOperations
 
     private static List<string> SplitODataLogical(string filter, string op)
     {
-        // Simple word-boundary split — does not handle parentheses or string literals
-        // containing the logical operator word.
         var parts = Regex.Split(filter, $@"\s+{Regex.Escape(op)}\s+", RegexOptions.IgnoreCase);
         return parts.ToList();
     }
 
     private static XElement ParseSingleODataCondition(string condition)
     {
-        // contains(field, 'value')
         var m = Regex.Match(
             condition,
             @"^contains\s*\(\s*(\w+)\s*,\s*'([^']*)'\s*\)$",
@@ -1357,7 +1544,6 @@ public sealed class MasterDataOperations
                 new XAttribute("value", $"%{m.Groups[2].Value}%")
             );
 
-        // startswith(field, 'value')
         m = Regex.Match(
             condition,
             @"^startswith\s*\(\s*(\w+)\s*,\s*'([^']*)'\s*\)$",
@@ -1371,7 +1557,6 @@ public sealed class MasterDataOperations
                 new XAttribute("value", m.Groups[2].Value)
             );
 
-        // endswith(field, 'value')
         m = Regex.Match(
             condition,
             @"^endswith\s*\(\s*(\w+)\s*,\s*'([^']*)'\s*\)$",
@@ -1385,7 +1570,6 @@ public sealed class MasterDataOperations
                 new XAttribute("value", m.Groups[2].Value)
             );
 
-        // field op value   (eq/ne/gt/ge/lt/le)
         m = Regex.Match(
             condition,
             @"^(\w+)\s+(eq|ne|gt|ge|lt|le)\s+(.+)$",
@@ -1401,7 +1585,6 @@ public sealed class MasterDataOperations
         var op = m.Groups[2].Value.ToLowerInvariant();
         var raw = m.Groups[3].Value.Trim();
 
-        // null checks
         if (raw.Equals("null", StringComparison.OrdinalIgnoreCase))
             return new XElement(
                 "condition",
@@ -1409,7 +1592,6 @@ public sealed class MasterDataOperations
                 new XAttribute("operator", op == "eq" ? "null" : "not-null")
             );
 
-        // Strip single quotes from string literals
         var value = raw.StartsWith('\'') && raw.EndsWith('\'') ? raw[1..^1] : raw;
 
         return new XElement(
