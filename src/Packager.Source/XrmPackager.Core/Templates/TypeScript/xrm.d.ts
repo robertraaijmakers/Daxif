@@ -299,6 +299,8 @@
 
   /**
    * Interface for a numerical attribute.
+   * Supported column types: money, decimal, double, integer.
+   * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/attributes
    */
   interface NumberAttribute extends Attribute<number> {
     /**
@@ -308,18 +310,29 @@
 
     /**
      * Returns a number indicating the maximum allowed value for an attribute.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/attributes/getMax
      */
     getMax(): number;
 
     /**
      * Returns a number indicating the minimum allowed value for an attribute.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/attributes/getMin
      */
     getMin(): number;
 
     /**
      * Returns the number of digits allowed to the right of the decimal point.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/attributes/getPrecision
      */
     getPrecision(): number;
+
+    /**
+     * Sets the number of digits allowed to the right of the decimal point.
+     * Supported column types: money, decimal, double, integer.
+     * @param value Number of digits allowed to the right of the decimal point.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/attributes/setPrecision
+     */
+    setPrecision(value: number): void;
   }
 
   /**
@@ -3494,6 +3507,7 @@ interface Xrm<T extends Xrm.PageBase<Xrm.AttributeCollectionBase, Xrm.TabCollect
 declare namespace Xrm {
     let App: App;
     let Panel: Panel;
+    let Copilot: Copilot;
     interface App {
         // --------------------------------------------------------------------------------------
         //  TODO:  app app.appSidePane
@@ -3849,6 +3863,25 @@ declare namespace Xrm {
          * @param onLoadFunction The function to be removed from the form OnLoad event.
          */
         removeOnLoad(onLoadFunction: Function): void; // eslint-disable-line @typescript-eslint/ban-types
+
+        /**
+         * Adds a function to be called on the form Loaded event, which fires after the form
+         * completes the full load process. Use this to defer app logic that is not immediately
+         * needed during initial load, improving the loading experience and time-to-first-use.
+         * @param myFunction The function to be executed on the form Loaded event. The execution
+         *   context is automatically passed as the first parameter.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/formContext-ui/addLoaded
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        addLoaded(myFunction: (context?: OnLoadEventContext) => any): void;
+
+        /**
+         * Removes a function from the form Loaded event.
+         * @param myFunction The function to be removed from the form Loaded event.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/formContext-ui/removeLoaded
+         */
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        removeLoaded(myFunction: Function): void;
     }
 
     interface HeaderSection {
@@ -4160,6 +4193,69 @@ declare namespace Xrm {
         preventDefaultOnError(): void;
     }
 
+    const enum TimerState {
+        NotSet = 1,
+        InProgress = 2,
+        Warning = 3,
+        Violated = 4,
+        Success = 5,
+        Expired = 6,
+        Canceled = 7,
+        Paused = 8,
+    }
+
+    /**
+     * Interface for a timer form control.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/getState
+     */
+    interface TimerControl extends BaseControl {
+        /**
+         * Returns the current state of the timer control.
+         * Values correspond to the TimerState enum: 1=NotSet, 2=InProgress, 3=Warning, 4=Violated, 5=Success, 6=Expired, 7=Canceled, 8=Paused.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/getState
+         */
+        getState(): TimerState;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface BaseControl {
+        /**
+         * Adds an event handler to the OnOutputChange event, which fires when an output property of the control changes.
+         * Supported on standard controls.
+         * @param myFunction The function to add to the OnOutputChange event.
+         *   The execution context is automatically passed as the first parameter.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/addonoutputchange
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        addOnOutputChange(myFunction: (context?: ExecutionContext<this, any>) => any): void;
+
+        /**
+         * Removes an event handler from the OnOutputChange event.
+         * @param myFunction The function to remove from the OnOutputChange event.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/removeonoutputchange
+         */
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        removeOnOutputChange(myFunction: Function): void;
+
+        /**
+         * Returns a dictionary of the output properties of the control.
+         * Supported on standard controls.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/getoutputs
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getOutputs(): { [key: string]: any };
+
+        /**
+         * Adds an event handler for a named custom event on a PCF (custom code component) control.
+         * The execution context is automatically passed as the first parameter to the handler function.
+         * @param name The name of the custom event configured for the custom component.
+         * @param handler The function to add to the named event.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/controls/addeventhandler
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        addEventHandler(name: string, handler: (context?: ExecutionContext<this, any>) => any): void;
+    }
+
     interface PostSaveEventContext extends ExecutionContext<null, PostSaveEventArgs> { }
 
     interface PostSaveEventArgs {
@@ -4320,5 +4416,262 @@ declare namespace Xrm {
          * @param requests An array of requests and changesets. Requests are the same as for execute. Changesets are arrays of requests that will be executed in transaction.
          */
         executeMultiple(requests: ExecuteMultipleRequests): Promise<WebApiResponse[]>;
+    }
+}
+
+declare namespace Xrm {
+    /**
+     * Provides methods for interacting with Microsoft 365 Copilot in model-driven Power Apps,
+     * including APIs for executing registered Microsoft Copilot Studio topics and managing
+     * Copilot action handlers and the Copilot side panel.
+     * All methods check whether M365 Copilot is enabled and do nothing (or resolve immediately) if it is not.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/xrm-copilot
+     */
+    interface Copilot {
+        /**
+         * Registers a handler function for a named Copilot action.
+         * Multiple handlers can be registered for the same actionId and they run sequentially.
+         * Registering the same function reference twice for the same actionId is silently ignored.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         *
+         * Built-in action IDs (have platform-default handlers; can be customized):
+         * - "MS.PA.CopilotChat.OpenRecord": Opens a record. Payload: { entity: string, recordId: string }
+         * - "MS.PA.CopilotChat.NavigateToView": Navigates to a view. Payload: { entity: string, fetchXml: string }
+         *
+         * @param actionId The unique identifier of the action to handle.
+         * @param actionHandler The function invoked when the action is triggered. Receives the action's data payload.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/addactionhandler
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        addActionHandler(actionId: string, actionHandler: (data: any) => void | Promise<void>): Promise<void>;
+
+        /**
+         * Restores the platform-default handler(s) for a built-in Copilot action ID.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @param actionId The action ID to restore defaults for. Must be one of the built-in action IDs.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/adddefaultactionhandlers
+         */
+        addDefaultActionHandlers(actionId: string): Promise<void>;
+
+        /**
+         * [Preview] Executes a Microsoft Copilot Studio topic by event name and returns the responses.
+         * The Copilot Studio topic receives app context via a set of Copilot Studio global variables
+         * (e.g. Global.PA__Copilot_Model_PageContext).
+         * @param eventName Event name registered as a trigger in the Microsoft Copilot Studio topic.
+         * @param eventParameters Parameters for the event execution. Depend on the topic implementation.
+         * @returns Promise resolving to an array of MCSResponse objects.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/executeevent
+         */
+        executeEvent(eventName: string, eventParameters: unknown): Promise<MCSResponse[]>;
+
+        /**
+         * [Preview] Executes a Microsoft Copilot Studio topic triggered by a prompt text string.
+         * The Copilot Studio topic receives app context via Copilot Studio global variables.
+         * @param promptText The text registered as a trigger query in the MCS topic.
+         * @returns Promise resolving to an array of MCSResponse objects.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/executeprompt
+         */
+        executePrompt(promptText: string): Promise<MCSResponse[]>;
+
+        /**
+         * Returns an object describing the currently active Microsoft 365 Copilot agent, or
+         * undefined if the agent state has not yet been determined.
+         * agentId+mode together indicate whether an agent is active or the user is on mainline M365 Copilot.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @returns Promise resolving to an M365CopilotAgent object, or undefined.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/getcurrentagent
+         */
+        getCurrentAgent(): Promise<M365CopilotAgent | undefined>;
+
+        /**
+         * Returns whether Microsoft 365 Copilot is enabled in the current environment.
+         * Checks license, environment settings, and Dataverse indexing status.
+         * The result is cached for 30 minutes; concurrent calls are deduplicated.
+         * All other Copilot methods check this value and do nothing if it returns false.
+         * @returns Promise resolving to true if M365 Copilot is enabled; false otherwise.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/ism365copilotenabled
+         */
+        isM365CopilotEnabled(): Promise<boolean>;
+
+        /**
+         * Opens the Microsoft 365 Copilot side panel.
+         * If the panel is already open, ensures it is initialized.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/openm365copilotpanel
+         */
+        openM365CopilotPanel(): Promise<void>;
+
+        /**
+         * Removes a previously registered action handler for a named Copilot action.
+         * Only removes the specific function reference; does not affect other handlers for the same actionId.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @param actionId The unique identifier of the action.
+         * @param actionHandler The handler to remove. Must be the same function reference passed to addActionHandler.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/removeactionhandler
+         */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        removeActionHandler(actionId: string, actionHandler: (data: any) => void | Promise<void>): Promise<void>;
+
+        /**
+         * Removes the platform-default handler(s) for a built-in Copilot action ID.
+         * Does not affect custom handlers registered through addActionHandler.
+         * Use addDefaultActionHandlers to restore the defaults.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @param actionId The action ID whose platform defaults should be removed. Must be a built-in action ID.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/removedefaultactionhandlers
+         */
+        removeDefaultActionHandlers(actionId: string): Promise<void>;
+
+        /**
+         * Sends a prompt text to the Microsoft 365 Copilot side panel.
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @param promptText The prompt text to send to the Copilot side panel.
+         * @param options Optional settings such as a target GPT ID or auto-submit behavior.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/sendprompttom365copilot
+         */
+        sendPromptToM365Copilot(promptText: string, options?: SendPromptToM365CopilotOptions): Promise<void>;
+
+        /**
+         * Updates the app context sent to the Microsoft 365 Copilot side panel.
+         * Automatically merges base context fields (appId, appType, orgId, geo, schemaVersion).
+         * Does nothing if Microsoft 365 Copilot is not enabled.
+         * @param context An object describing the current app context.
+         * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/updatecontext
+         */
+        updateContext(context: PowerAppsContent): Promise<void>;
+    }
+
+    /**
+     * Describes the currently active Microsoft 365 Copilot agent.
+     * Returned by Xrm.Copilot.getCurrentAgent().
+     * The agentId and mode properties work together to signal agent state:
+     * - agentId is a string and mode is "agentPage" or "mentioned": an agent is active.
+     * - agentId is null and mode is null: the user is on mainline M365 Copilot with no active agent.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/m365copilotagent
+     */
+    interface M365CopilotAgent {
+        /**
+         * The unique identifier of the active agent, or null if the user is on mainline M365 Copilot.
+         */
+        agentId: string | null;
+
+        /**
+         * How the agent is being referenced, or null when no agent is active.
+         * "agentPage": the user is on the agent's dedicated home page.
+         * "mentioned": the agent is the @-mention target for the next conversational turn.
+         */
+        mode: M365CopilotAgentMode | null;
+    }
+
+    /**
+     * How the active Microsoft 365 Copilot agent is being referenced in the current turn.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/m365copilotagentmode
+     */
+    type M365CopilotAgentMode = "agentPage" | "mentioned";
+
+    /**
+     * [Preview] A single response entry returned by Xrm.Copilot.executeEvent and Xrm.Copilot.executePrompt.
+     * Only the type property is guaranteed to be present; all other properties are optional.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/mcsresponse
+     */
+    interface MCSResponse {
+        /** The type of the response activity (always present). */
+        type: string;
+        /** Unique identifier for the response activity. */
+        id?: string;
+        /** Locale information (e.g. "en-US"). */
+        locale?: string;
+        /** ID of the message this response is replying to. */
+        replyToId?: string;
+        /** ISO 8601 timestamp of the response. */
+        timestamp?: string;
+        /** Text to be spoken by a speech synthesizer (SSML or plain text). */
+        speak?: string;
+        /** Text content of the response. */
+        text?: string;
+        /** Format of the text content. */
+        textFormat?: "plain" | "markdown" | "xml";
+        /** Suggested actions for the user to take. */
+        suggestedActions?: { actions: any[]; to?: string[] }; // eslint-disable-line @typescript-eslint/no-explicit-any
+        /** Custom payload or structured data from the topic. */
+        value?: unknown;
+        /** Type descriptor for the value payload. */
+        valueType?: string;
+        /** Name of the response or action. */
+        name?: string;
+        /** Layout style for displaying attachments in a rich client. */
+        attachmentLayout?: "list" | "carousel";
+        /** Attachments included in the response. */
+        attachments?: MCSResponseAttachment[];
+    }
+
+    /**
+     * An attachment within an MCSResponse.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/mcsresponse
+     */
+    interface MCSResponseAttachment {
+        /** The content of the attachment (required). */
+        content: unknown;
+        /** MIME type or descriptor identifying the content format. */
+        contentType?: string;
+    }
+
+    /**
+     * Context data passed to Xrm.Copilot.updateContext().
+     * Base fields (appId, appType, orgId, geo, schemaVersion) are automatically merged by the platform.
+     * You do not need to supply those fields; they are provided as optional here for completeness.
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/powerappscontent
+     */
+    interface PowerAppsContent {
+        /** Version of the content schema (auto-merged by platform). */
+        schemaVersion?: string;
+        /** Type of the Power Apps application (auto-merged by platform). */
+        appType?: "ModelApp" | "CanvasApp" | "CodeApp";
+        /** Unique identifier of the app (auto-merged by platform). */
+        appId?: string;
+        /** Unique identifier of the organization (auto-merged by platform). */
+        orgId?: string;
+        /** Geographic region of the environment (auto-merged by platform). */
+        geo?: string;
+        /** Logical name of the primary table for the current page. */
+        entity?: string;
+        /** FetchXML string scoping the data context (e.g. to the current view's filter). */
+        filterXML?: string;
+        /** Unique identifier of a saved view or filter. */
+        filterId?: string;
+        /** Additional arbitrary key-value context pairs for the Copilot topic. */
+        extendedContext?: Array<Record<string, unknown>>;
+        /** Telemetry correlation identifiers for debugging and tracing. */
+        telemetryContext?: { clientSessionId?: string; clientRequestId?: string };
+        /** Records currently selected by the user in the current view or grid. */
+        selectedRecords?: { selectedContents: ISelectedRecordContents[] };
+        /** App context annotation used for message rendering in Copilot. */
+        messageAnnotationAppContext?: string;
+    }
+
+    /**
+     * Represents a single selected record in PowerAppsContent.selectedRecords.
+     * The exact shape depends on the entity and context.
+     */
+    interface ISelectedRecordContents {
+        [key: string]: unknown;
+    }
+
+    /**
+     * Optional parameters for Xrm.Copilot.sendPromptToM365Copilot().
+     * @see https://learn.microsoft.com/en-us/power-apps/developer/model-driven-apps/clientapi/reference/Xrm-Copilot/sendprompttom365copilotoptions
+     */
+    interface SendPromptToM365CopilotOptions {
+        /**
+         * ID of a specific Microsoft 365 Copilot agent (GPT) to target.
+         * If omitted, the prompt is sent to the default Copilot experience.
+         */
+        gptId?: string;
+        /**
+         * When set to false, the prompt text is placed in the Copilot input box but not submitted,
+         * allowing the user to review or edit it before sending.
+         * Defaults to true (prompt is submitted automatically).
+         */
+        autoSubmit?: boolean;
     }
 }

@@ -53,15 +53,31 @@ public partial class {{table.SchemaName}} : ExtendedEntity{{ if table.Interfaces
     }
 
     {{~ for column in table.Columns | array.sort "LogicalName" ~}}
-    {{~ if column.Description || column.DisplayName ~}}
+    {{~ has_precision = (column.TypeName == "DecimalColumnModel" || column.TypeName == "DoubleColumnModel" || column.TypeName == "MoneyColumnModel") && column.Precision ~}}
+    {{~ is_lookup = column.TypeName == "LookupColumnModel" ~}}
+    {{~ has_description = column.Description && column.Description != "" && column.Description != " " && column.Description != "  " && column.Description != "   " && column.Description != "\t" && column.Description != "\n" && column.Description != "\r\n" ~}}
+    {{~ if has_description || column.DisplayName || has_precision || is_lookup ~}}
     /// <summary>
-    {{~ if column.Description && column.Description != "" && column.Description != " " && column.Description != "  " && column.Description != "   " && column.Description != "\t" && column.Description != "\n" && column.Description != "\r\n" ~}}
+    {{~ if has_description ~}}
     {{~ for line in column.Description | string.split '\n' ~}}
     /// <para>{{ line | string.strip | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
     {{~ end ~}}
     {{~ end ~}}
     {{~ if column.DisplayName ~}}
     /// <para>Display Name: {{ column.DisplayName | string.replace "&" "&amp;" | string.replace "<" "&lt;" | string.replace ">" "&gt;" }}</para>
+    {{~ end ~}}
+    {{~ if has_precision ~}}
+    /// <para>Precision: {{ column.Precision }} decimal places.</para>
+    {{~ end ~}}
+    {{~ if is_lookup ~}}
+    {{~ if column.TargetTables && column.TargetTables.size > 1 ~}}
+    /// <para>Target tables: {{ column.TargetTables | array.join ", " }}</para>
+    {{~ else if column.TargetTable && column.TargetTable != "" ~}}
+    /// <para>Target table: {{ column.TargetTable }}</para>
+    {{~ end ~}}
+    {{~ if column.RelationshipName && column.RelationshipName != "" ~}}
+    /// <para>Relationship: {{ column.RelationshipName }}</para>
+    {{~ end ~}}
     {{~ end ~}}
     /// </summary>
     {{~ end ~}}
