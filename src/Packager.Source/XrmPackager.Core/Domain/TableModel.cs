@@ -18,6 +18,8 @@ public record TableModel
 
     public bool IsIntersect { get; init; }
 
+    public string EntitySetName { get; init; } = string.Empty;
+
     public IList<ColumnModel> Columns { get; init; } = [];
 
     public IList<RelationshipModel> Relationships { get; init; } = [];

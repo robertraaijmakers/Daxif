@@ -251,6 +251,7 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
             PrimaryNameAttribute = entityMetadata.PrimaryNameAttribute,
             PrimaryIdAttribute = entityMetadata.PrimaryIdAttribute,
             IsIntersect = entityMetadata.IsIntersect ?? false,
+            EntitySetName = entityMetadata.EntitySetName ?? string.Empty,
             Columns = new List<ColumnModel>(),
             Relationships = new List<RelationshipModel>(),
             Keys = new List<AlternateKeyModel>(),

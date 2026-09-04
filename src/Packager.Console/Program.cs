@@ -51,6 +51,9 @@ class Program
                 case "masterdata":
                     return HandleMasterDataCommand(args, logger);
 
+                case "kotlin":
+                    return HandleKotlinCommand(args, logger);
+
                 default:
                     logger.Error($"Unknown command: {command}");
                     PrintUsage();
@@ -96,6 +99,7 @@ COMMANDS:
     xrmdt generate       Generate TypeScript definitions
     masterdata export    Export master data to JSON files
     masterdata import    Import master data from JSON files
+    kotlin generate      Generate Kotlin data classes from Dataverse metadata
     help                 Show this help message
 
 EXAMPLES:
@@ -109,6 +113,7 @@ EXAMPLES:
     xrmpackager solution import --zip ./MySolution.zip --publish
     xrmpackager context generate --out ./Generated/XrmContext.cs --namespace MyCompany.Crm
     xrmpackager xrmdt generate --out ./Generated/Xrm.d.ts --namespace Xrm
+    xrmpackager kotlin generate --out ./Generated/Kotlin --package com.mycompany.d365
 
 AUTHENTICATION:
     Authentication is configured via environment variables:
@@ -169,6 +174,12 @@ For more information, visit: https://github.com/XrmPackager/XrmPackager
     static int HandleMasterDataCommand(string[] args, ILogger logger)
     {
         var command = new MasterDataCommand(logger);
+        return command.Execute(args);
+    }
+
+    static int HandleKotlinCommand(string[] args, ILogger logger)
+    {
+        var command = new KotlinGenerateCommand(logger);
         return command.Execute(args);
     }
 }
