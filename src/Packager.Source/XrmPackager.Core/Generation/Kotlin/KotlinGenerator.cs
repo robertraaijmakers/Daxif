@@ -34,6 +34,7 @@ public sealed class KotlinGenerator
         WriteAnnotationsFile(outputPath, options.BasePackage);
         WriteEntityFiles(outputPath, options.BasePackage, tables);
         WriteEnumFiles(outputPath, options.BasePackage, tables);
+        WriteLabeledEnumInterface(outputPath, options.BasePackage);
 
         _logger.Info($"Kotlin entities generated to: {outputPath}");
         _logger.Info($"Tables: {tables.Count}");
@@ -47,17 +48,29 @@ public sealed class KotlinGenerator
         File.WriteAllText(Path.Combine(coreDir, "D365Annotations.kt"), content, System.Text.Encoding.UTF8);
     }
 
-    private static void WriteEntityFiles(string outputPath, string basePackage, IEnumerable<TableModel> tables)
+    private static void WriteEntityFiles(string outputPath, string basePackage, IReadOnlyList<TableModel> tables)
     {
         var entityDir = Path.Combine(outputPath, "entity");
         Directory.CreateDirectory(entityDir);
 
+        var generatedSchemaNames = tables
+            .Select(t => t.SchemaName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var table in tables)
         {
             var className = KotlinNameHelper.ToClassName(table.SchemaName) + "Entity";
-            var content = KotlinEntityCodeBuilder.Build(table, basePackage);
+            var content = KotlinEntityCodeBuilder.Build(table, basePackage, generatedSchemaNames);
             File.WriteAllText(Path.Combine(entityDir, $"{className}.kt"), content, System.Text.Encoding.UTF8);
         }
+    }
+
+    private static void WriteLabeledEnumInterface(string outputPath, string basePackage)
+    {
+        var enumsDir = Path.Combine(outputPath, "entity", "enums");
+        Directory.CreateDirectory(enumsDir);
+        var content = KotlinLabeledEnumInterfaceContent.Build(basePackage);
+        File.WriteAllText(Path.Combine(enumsDir, "LabeledEnum.kt"), content, System.Text.Encoding.UTF8);
     }
 
     private void WriteEnumFiles(string outputPath, string basePackage, IEnumerable<TableModel> tables)

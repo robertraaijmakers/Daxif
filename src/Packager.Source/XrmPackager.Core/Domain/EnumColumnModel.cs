@@ -15,6 +15,8 @@ public record EnumColumnModel : ColumnModel
 
     public IDictionary<int, string> OptionColors { get; init; } = new Dictionary<int, string>();
 
+    public IDictionary<int, string> OptionExternalValues { get; init; } = new Dictionary<int, string>();
+
     /// <summary>
     /// Maps option value to a dictionary of LCID → label.
     /// </summary>

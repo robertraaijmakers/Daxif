@@ -13,7 +13,7 @@ public static class KotlinEnumCodeBuilder
         var sb = new StringBuilder();
         sb.AppendLine($"package {enumsPackage}");
         sb.AppendLine();
-        sb.AppendLine($"enum class {className}(val code: Int) {{");
+        sb.AppendLine($"enum class {className}(val code: Int, override val internalLabel: String, override val externalLabel: String) : LabeledEnum {{");
 
         var options = enumColumn.OptionsetValues
             .OrderBy(kvp => kvp.Key)
@@ -27,7 +27,11 @@ public static class KotlinEnumCodeBuilder
             var constantName = GetUniqueConstantName(label, value, usedConstants);
             usedConstants.Add(constantName);
             var comma = i < options.Count - 1 ? "," : ";";
-            sb.AppendLine($"    {constantName}({value}){comma}");
+            var escapedLabel = KotlinNameHelper.EscapeString(label);
+            var externalValue = enumColumn.OptionExternalValues.TryGetValue(value, out var ev)
+                ? KotlinNameHelper.EscapeString(ev)
+                : escapedLabel;
+            sb.AppendLine($"    {constantName}({value}, \"{escapedLabel}\", \"{externalValue}\"){comma}");
         }
 
         sb.AppendLine();

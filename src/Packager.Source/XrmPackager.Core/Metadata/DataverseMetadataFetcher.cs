@@ -524,6 +524,7 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
         var optionLocalizations = BuildOptionLocalizations(attr);
         var optionDescriptions = BuildOptionDescriptions(attr);
         var optionColors = BuildOptionColors(attr);
+        var optionExternalValues = BuildOptionExternalValues(attr);
 
         return new EnumColumnModel
         {
@@ -542,6 +543,7 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
             OptionDescriptions = optionDescriptions,
             OptionColors = optionColors,
             OptionLocalizations = optionLocalizations,
+            OptionExternalValues = optionExternalValues,
         };
     }
 
@@ -591,6 +593,27 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
         }
 
         return colors;
+    }
+
+    private static Dictionary<int, string> BuildOptionExternalValues(EnumAttributeMetadata attr)
+    {
+        var externalValues = new Dictionary<int, string>();
+        if (attr.OptionSet?.Options == null)
+        {
+            return externalValues;
+        }
+
+        foreach (var option in attr.OptionSet.Options)
+        {
+            if (option.Value == null || string.IsNullOrWhiteSpace(option.ExternalValue))
+            {
+                continue;
+            }
+
+            externalValues[option.Value.GetValueOrDefault()] = option.ExternalValue;
+        }
+
+        return externalValues;
     }
 
     private static Dictionary<int, Dictionary<int, string>> BuildOptionLocalizations(
@@ -798,6 +821,7 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
                     RelatedEntity = rel.ReferencedEntity,
                     RelatedEntityAttribute = rel.ReferencedAttribute,
                     RelatedEntitySchemaName = relatedMetadata?.SchemaName ?? "Entity",
+                    NavigationPropertyName = rel.ReferencingEntityNavigationPropertyName,
                 }
             );
         }
@@ -827,6 +851,7 @@ public class DataverseMetadataFetcher : IDataverseMetadataFetcher
                     RelatedEntity = rel.ReferencingEntity,
                     RelatedEntityAttribute = rel.ReferencingAttribute,
                     RelatedEntitySchemaName = relatedMetadata?.SchemaName ?? "Entity",
+                    NavigationPropertyName = rel.ReferencedEntityNavigationPropertyName,
                 }
             );
         }

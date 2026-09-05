@@ -15,4 +15,9 @@ public record RelationshipModel
     public string? RelatedEntityAttribute { get; init; } // Attribute on related entity (if applicable)
 
     public string? RelatedEntitySchemaName { get; init; } // Schema name of related entity
+
+    /// <summary>
+    /// For ManyToOne: the single-valued navigation property name on the referencing entity — use this for @odata.bind.
+    /// </summary>
+    public string? NavigationPropertyName { get; init; }
 }

@@ -17,7 +17,7 @@ public static class KotlinEntityCodeBuilder
         "owninguser",
     };
 
-    public static string Build(TableModel table, string basePackage)
+    public static string Build(TableModel table, string basePackage, IReadOnlySet<string> generatedEntitySchemaNames)
     {
         var entityPackage = $"{basePackage}.entity";
         var corePackage = $"{basePackage}.core";
@@ -28,7 +28,7 @@ public static class KotlinEntityCodeBuilder
 
         var entityName = KotlinNameHelper.ToClassName(table.SchemaName) + "Entity";
 
-        var properties = BuildProperties(table);
+        var properties = BuildProperties(table, generatedEntitySchemaNames);
         var needsBigDecimal = properties.Any(p => p.KotlinType.Contains("BigDecimal"));
         var needsUuid = properties.Any(p => p.KotlinType.Contains("UUID"));
         var needsD365Field = properties.Any(p => p.HasD365FieldAnnotation);
@@ -73,20 +73,56 @@ public static class KotlinEntityCodeBuilder
 
     private sealed record PropertyEntry(string Code, string KotlinType, bool HasD365FieldAnnotation);
 
-    private static List<PropertyEntry> BuildProperties(TableModel table)
+    private static List<PropertyEntry> BuildProperties(TableModel table, IReadOnlySet<string> generatedEntitySchemaNames)
     {
         var result = new List<PropertyEntry>();
         var usedNames = new HashSet<string>(StringComparer.Ordinal) { "etag" };
 
+        // Map attribute logical name → ManyToOne relationships (one per target entity)
+        // Value is the ReferencingEntityNavigationPropertyName — the single-valued nav prop used in @odata.bind
+        var lookupRelationships = table.Relationships
+            .Where(r => r.RelationshipType == "ManyToOne" && !string.IsNullOrWhiteSpace(r.ThisEntityAttribute))
+            .GroupBy(r => r.ThisEntityAttribute!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(
+                    r => r.RelatedEntity ?? string.Empty,
+                    r => r.NavigationPropertyName ?? r.SchemaName,
+                    StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase);
+
         foreach (var column in table.Columns)
         {
-            result.AddRange(BuildPropertyEntries(column, usedNames));
+            result.AddRange(BuildPropertyEntries(column, usedNames, lookupRelationships));
+        }
+
+        // Collection-valued navigation properties for OneToMany relationships (deep insert / write-only)
+        foreach (var rel in table.Relationships
+            .Where(r => r.RelationshipType == "OneToMany"
+                && r.RelatedEntitySchemaName != null
+                && generatedEntitySchemaNames.Contains(r.RelatedEntitySchemaName))
+            .DistinctBy(r => r.NavigationPropertyName ?? r.SchemaName))
+        {
+            var navProp = rel.NavigationPropertyName ?? rel.SchemaName;
+            if (string.IsNullOrWhiteSpace(navProp)) continue;
+
+            var propName = Unique(KotlinNameHelper.ToPropertyName(navProp), usedNames);
+            usedNames.Add(propName);
+
+            var relatedClass = KotlinNameHelper.ToClassName(rel.RelatedEntitySchemaName!) + "Entity";
+            result.Add(new PropertyEntry(
+                $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}\", access = JsonProperty.Access.WRITE_ONLY)\n" +
+                $"    var {propName}: List<{relatedClass}>? = null",
+                $"List<{relatedClass}>", false));
         }
 
         return result;
     }
 
-    private static IEnumerable<PropertyEntry> BuildPropertyEntries(ColumnModel column, HashSet<string> usedNames)
+    private static IEnumerable<PropertyEntry> BuildPropertyEntries(
+        ColumnModel column,
+        HashSet<string> usedNames,
+        Dictionary<string, Dictionary<string, string>> lookupRelationships)
     {
         var basePropName = KotlinNameHelper.ToPropertyName(column.SchemaName);
         var propName = Unique(basePropName, usedNames);
@@ -184,6 +220,7 @@ public static class KotlinEntityCodeBuilder
 
                 var isSystemManaged = SystemManagedLookupLogicalNames.Contains(column.LogicalName);
                 var isPolymorphic = lookupCol.TargetTables.Count > 1;
+                lookupRelationships.TryGetValue(column.LogicalName, out var relsByTarget);
 
                 // Read: _logicalname_value (always present)
                 var readName = Unique(propName + "Value", usedNames);
@@ -208,24 +245,21 @@ public static class KotlinEntityCodeBuilder
                 // Write bind fields — skip for system-managed lookups
                 if (!isSystemManaged)
                 {
-                    if (isPolymorphic)
+                    var targets = isPolymorphic ? lookupCol.TargetTables : [lookupCol.TargetTable];
+                    foreach (var target in targets)
                     {
-                        foreach (var target in lookupCol.TargetTables)
-                        {
-                            var bindName = Unique(propName + KotlinNameHelper.ToClassName(target) + "Bind", usedNames);
-                            usedNames.Add(bindName);
-                            yield return new PropertyEntry(
-                                $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(column.SchemaName)}_{KotlinNameHelper.EscapeString(target)}@odata.bind\", access = JsonProperty.Access.WRITE_ONLY)\n" +
-                                $"    var {bindName}: String? = null",
-                                "String", false);
-                        }
-                    }
-                    else
-                    {
-                        var bindName = Unique(propName + "Bind", usedNames);
+                        // Prefer relationship schema name as navigation property; fall back to derived format
+                        var navProp = relsByTarget != null && relsByTarget.TryGetValue(target, out var relSchema) && !string.IsNullOrWhiteSpace(relSchema)
+                            ? relSchema
+                            : isPolymorphic
+                                ? $"{column.LogicalName}_{target}"
+                                : column.LogicalName;
+
+                        var suffix = isPolymorphic ? KotlinNameHelper.ToClassName(target) + "Bind" : "Bind";
+                        var bindName = Unique(propName + suffix, usedNames);
                         usedNames.Add(bindName);
                         yield return new PropertyEntry(
-                            $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(column.SchemaName)}@odata.bind\", access = JsonProperty.Access.WRITE_ONLY)\n" +
+                            $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}@odata.bind\", access = JsonProperty.Access.WRITE_ONLY)\n" +
                             $"    var {bindName}: String? = null",
                             "String", false);
                     }
