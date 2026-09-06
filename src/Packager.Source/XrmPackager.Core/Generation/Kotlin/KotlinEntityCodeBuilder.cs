@@ -32,6 +32,7 @@ public static class KotlinEntityCodeBuilder
         var needsBigDecimal = properties.Any(p => p.KotlinType.Contains("BigDecimal"));
         var needsUuid = properties.Any(p => p.KotlinType.Contains("UUID"));
         var needsD365Field = properties.Any(p => p.HasD365FieldAnnotation);
+        var needsMultiOptionSet = properties.Any(p => p.IsMultiOptionSet);
 
         var sb = new StringBuilder();
         sb.AppendLine($"package {entityPackage}");
@@ -43,6 +44,11 @@ public static class KotlinEntityCodeBuilder
         {
             sb.AppendLine($"import {corePackage}.D365Field");
             sb.AppendLine($"import {corePackage}.D365FieldKind");
+        }
+        if (needsMultiOptionSet)
+        {
+            sb.AppendLine($"import {corePackage}.D365MultiOptionSetDeserializer");
+            sb.AppendLine("import tools.jackson.databind.annotation.JsonDeserialize");
         }
         if (needsBigDecimal) sb.AppendLine("import java.math.BigDecimal");
         if (needsUuid) sb.AppendLine("import java.util.UUID");
@@ -71,7 +77,7 @@ public static class KotlinEntityCodeBuilder
         return sb.ToString();
     }
 
-    private sealed record PropertyEntry(string Code, string KotlinType, bool HasD365FieldAnnotation);
+    private sealed record PropertyEntry(string Code, string KotlinType, bool HasD365FieldAnnotation, bool IsMultiOptionSet = false);
 
     private static List<PropertyEntry> BuildProperties(TableModel table, IReadOnlySet<string> generatedEntitySchemaNames)
     {
@@ -206,11 +212,14 @@ public static class KotlinEntityCodeBuilder
             {
                 var kotlinType = enumCol.IsMultiSelect ? "List<Int>?" : "Int?";
                 var kind = enumCol.IsMultiSelect ? "MULTI_OPTION_SET" : "OPTION_SET";
+                var multiDeserialize = enumCol.IsMultiSelect
+                    ? $"\n    @field:JsonDeserialize(using = D365MultiOptionSetDeserializer::class)"
+                    : "";
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.{kind})\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\"){multiDeserialize}\n" +
                     $"    var {propName}: {kotlinType} = null",
-                    kotlinType, true);
+                    kotlinType, true, enumCol.IsMultiSelect);
                 break;
             }
 

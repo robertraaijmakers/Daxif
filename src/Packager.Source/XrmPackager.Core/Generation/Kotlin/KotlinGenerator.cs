@@ -32,6 +32,7 @@ public sealed class KotlinGenerator
         var tables = fetcher.FetchMetadataAsync().GetAwaiter().GetResult().ToList();
 
         WriteAnnotationsFile(outputPath, options.BasePackage);
+        WriteMultiOptionSetDeserializerFile(outputPath, options.BasePackage);
         WriteEntityFiles(outputPath, options.BasePackage, tables);
         WriteEnumFiles(outputPath, options.BasePackage, tables);
         WriteLabeledEnumInterface(outputPath, options.BasePackage);
@@ -46,6 +47,14 @@ public sealed class KotlinGenerator
         Directory.CreateDirectory(coreDir);
         var content = KotlinAnnotationsContent.Build(basePackage);
         File.WriteAllText(Path.Combine(coreDir, "D365Annotations.kt"), content, System.Text.Encoding.UTF8);
+    }
+
+    private static void WriteMultiOptionSetDeserializerFile(string outputPath, string basePackage)
+    {
+        var coreDir = Path.Combine(outputPath, "core");
+        Directory.CreateDirectory(coreDir);
+        var content = KotlinMultiOptionSetDeserializerContent.Build(basePackage);
+        File.WriteAllText(Path.Combine(coreDir, "D365MultiOptionSetDeserializer.kt"), content, System.Text.Encoding.UTF8);
     }
 
     private static void WriteEntityFiles(string outputPath, string basePackage, IReadOnlyList<TableModel> tables)
