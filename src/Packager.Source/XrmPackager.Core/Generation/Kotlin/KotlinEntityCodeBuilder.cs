@@ -17,6 +17,28 @@ public static class KotlinEntityCodeBuilder
         "owninguser",
     };
 
+    // Fields declared in D365BaseEntity — skipped when the entity extends it.
+    private static readonly HashSet<string> BaseEntityLogicalNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "versionnumber",
+        "createdon",
+        "modifiedon",
+        "overriddencreatedon",
+        "createdby",
+        "modifiedby",
+        "createdonbehalfby",
+        "modifiedonbehalfby",
+    };
+
+    // Fields declared in D365OwnableEntity — skipped when the entity extends it.
+    private static readonly HashSet<string> OwnableEntityLogicalNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ownerid",
+        "owningbusinessunit",
+        "owningteam",
+        "owninguser",
+    };
+
     public static string Build(TableModel table, string basePackage, IReadOnlySet<string> generatedEntitySchemaNames)
     {
         var entityPackage = $"{basePackage}.entity";
@@ -28,7 +50,19 @@ public static class KotlinEntityCodeBuilder
 
         var entityName = KotlinNameHelper.ToClassName(table.SchemaName) + "Entity";
 
-        var properties = BuildProperties(table, generatedEntitySchemaNames);
+        var columnLogicalNames = table.Columns.Select(c => c.LogicalName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasOwnerid = columnLogicalNames.Contains("ownerid");
+        var hasCreatedon = columnLogicalNames.Contains("createdon");
+
+        string? baseClass = hasOwnerid ? "D365OwnableEntity"
+            : hasCreatedon ? "D365BaseEntity"
+            : null;
+
+        var skipLogicalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (baseClass != null) skipLogicalNames.UnionWith(BaseEntityLogicalNames);
+        if (baseClass == "D365OwnableEntity") skipLogicalNames.UnionWith(OwnableEntityLogicalNames);
+
+        var properties = BuildProperties(table, generatedEntitySchemaNames, skipLogicalNames);
         var needsBigDecimal = properties.Any(p => p.KotlinType.Contains("BigDecimal"));
         var needsUuid = properties.Any(p => p.KotlinType.Contains("UUID"));
         var needsD365Field = properties.Any(p => p.HasD365FieldAnnotation);
@@ -40,6 +74,7 @@ public static class KotlinEntityCodeBuilder
         sb.AppendLine("import com.fasterxml.jackson.annotation.JsonInclude");
         sb.AppendLine("import com.fasterxml.jackson.annotation.JsonProperty");
         sb.AppendLine($"import {corePackage}.D365Entity");
+        if (baseClass != null) sb.AppendLine($"import {corePackage}.{baseClass}");
         if (needsD365Field)
         {
             sb.AppendLine($"import {corePackage}.D365Field");
@@ -60,11 +95,17 @@ public static class KotlinEntityCodeBuilder
         sb.AppendLine($"    primaryName = \"{KotlinNameHelper.EscapeString(table.PrimaryNameAttribute ?? string.Empty)}\"");
         sb.AppendLine(")");
         sb.AppendLine("@JsonInclude(JsonInclude.Include.NON_NULL)");
-        sb.AppendLine($"class {entityName} {{");
 
-        // etag: read-only, never sent in write bodies
-        sb.AppendLine("    @field:JsonProperty(value = \"@odata.etag\", access = JsonProperty.Access.READ_ONLY)");
-        sb.AppendLine("    var etag: String? = null");
+        var classDeclaration = baseClass != null
+            ? $"class {entityName} : {baseClass}() {{"
+            : $"class {entityName} {{";
+        sb.AppendLine(classDeclaration);
+
+        if (baseClass == null)
+        {
+            sb.AppendLine("    @field:JsonProperty(value = \"@odata.etag\", access = JsonProperty.Access.READ_ONLY)");
+            sb.AppendLine("    var etag: String? = null");
+        }
 
         foreach (var prop in properties)
         {
@@ -79,7 +120,10 @@ public static class KotlinEntityCodeBuilder
 
     private sealed record PropertyEntry(string Code, string KotlinType, bool HasD365FieldAnnotation, bool IsMultiOptionSet = false);
 
-    private static List<PropertyEntry> BuildProperties(TableModel table, IReadOnlySet<string> generatedEntitySchemaNames)
+    private static List<PropertyEntry> BuildProperties(
+        TableModel table,
+        IReadOnlySet<string> generatedEntitySchemaNames,
+        IReadOnlySet<string> skipLogicalNames)
     {
         var result = new List<PropertyEntry>();
         var usedNames = new HashSet<string>(StringComparer.Ordinal) { "etag" };
@@ -99,6 +143,7 @@ public static class KotlinEntityCodeBuilder
 
         foreach (var column in table.Columns)
         {
+            if (skipLogicalNames.Contains(column.LogicalName)) continue;
             result.AddRange(BuildPropertyEntries(column, usedNames, lookupRelationships));
         }
 
@@ -255,16 +300,27 @@ public static class KotlinEntityCodeBuilder
                 if (!isSystemManaged)
                 {
                     var targets = isPolymorphic ? lookupCol.TargetTables : [lookupCol.TargetTable];
-                    foreach (var target in targets)
-                    {
-                        // Prefer relationship schema name as navigation property; fall back to derived format
-                        var navProp = relsByTarget != null && relsByTarget.TryGetValue(target, out var relSchema) && !string.IsNullOrWhiteSpace(relSchema)
-                            ? relSchema
-                            : isPolymorphic
-                                ? $"{column.LogicalName}_{target}"
-                                : column.LogicalName;
 
-                        var suffix = isPolymorphic ? KotlinNameHelper.ToClassName(target) + "Bind" : "Bind";
+                    // Resolve navProp per target, then deduplicate: when multiple targets share the
+                    // same bind path (same navProp), emit only one field with the simple "Bind" suffix.
+                    var navPropTargets = targets
+                        .Select(t =>
+                        {
+                            var navProp = relsByTarget != null && relsByTarget.TryGetValue(t, out var relSchema) && !string.IsNullOrWhiteSpace(relSchema)
+                                ? relSchema
+                                : isPolymorphic
+                                    ? $"{column.LogicalName}_{t}"
+                                    : column.LogicalName;
+                            return (Target: t, NavProp: navProp);
+                        })
+                        .DistinctBy(x => x.NavProp, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    var multipleBindPaths = navPropTargets.Count > 1;
+
+                    foreach (var (target, navProp) in navPropTargets)
+                    {
+                        var suffix = multipleBindPaths ? KotlinNameHelper.ToClassName(target) + "Bind" : "Bind";
                         var bindName = Unique(propName + suffix, usedNames);
                         usedNames.Add(bindName);
                         yield return new PropertyEntry(
