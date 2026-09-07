@@ -21,6 +21,7 @@ public sealed class KotlinGenerateCommand
         var basePackage = "com.company.d365";
         string? solutionName = null;
         var entities = new List<string>();
+        var runKtlintFormat = true;
 
         for (var i = 2; i < args.Length; i++)
         {
@@ -45,6 +46,9 @@ public sealed class KotlinGenerateCommand
                     if (i + 1 >= args.Length) throw new InvalidArgumentException("--solution requires a value.");
                     solutionName = args[++i];
                     break;
+                case "--no-ktlint":
+                    runKtlintFormat = false;
+                    break;
                 default:
                     throw new InvalidArgumentException($"Unknown kotlin option: {args[i]}");
             }
@@ -62,6 +66,7 @@ public sealed class KotlinGenerateCommand
                 BasePackage = basePackage,
                 SolutionName = solutionName,
                 Entities = entities,
+                RunKtlintFormat = runKtlintFormat,
             });
         });
     }

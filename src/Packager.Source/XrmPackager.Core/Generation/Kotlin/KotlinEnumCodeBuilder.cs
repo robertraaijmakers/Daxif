@@ -13,7 +13,7 @@ public static class KotlinEnumCodeBuilder
         var sb = new StringBuilder();
         sb.AppendLine($"package {enumsPackage}");
         sb.AppendLine();
-        sb.AppendLine($"enum class {className}(val code: Int, override val internalLabel: String, override val externalLabel: String) : LabeledEnum {{");
+        sb.AppendLine($"enum class {className}(override val code: Int, override val internalLabel: String, override val externalLabel: String) : LabeledEnum {{");
 
         var options = enumColumn.OptionsetValues
             .OrderBy(kvp => kvp.Key)
@@ -26,7 +26,7 @@ public static class KotlinEnumCodeBuilder
             var (value, label) = options[i];
             var constantName = GetUniqueConstantName(label, value, usedConstants);
             usedConstants.Add(constantName);
-            var comma = i < options.Count - 1 ? "," : ";";
+            var comma = i < options.Count - 1 ? "," : "";
             var escapedLabel = KotlinNameHelper.EscapeString(label);
             var externalValue = enumColumn.OptionExternalValues.TryGetValue(value, out var ev)
                 ? KotlinNameHelper.EscapeString(ev)
@@ -34,13 +34,6 @@ public static class KotlinEnumCodeBuilder
             sb.AppendLine($"    {constantName}({value}, \"{escapedLabel}\", \"{externalValue}\"){comma}");
         }
 
-        sb.AppendLine();
-        sb.AppendLine("    companion object {");
-        sb.AppendLine("        fun fromCode(code: Int?) = entries.find { it.code == code }");
-        sb.AppendLine();
-        sb.AppendLine("        fun fromCodeOrThrow(code: Int) = fromCode(code)");
-        sb.AppendLine("            ?: throw IllegalArgumentException(\"Unknown code: $code\")");
-        sb.AppendLine("    }");
         sb.AppendLine("}");
 
         return sb.ToString();

@@ -141,9 +141,10 @@ public static class KotlinEntityCodeBuilder
                     StringComparer.OrdinalIgnoreCase),
                 StringComparer.OrdinalIgnoreCase);
 
-        foreach (var column in table.Columns)
+        foreach (var column in table.Columns
+            .Where(c => !skipLogicalNames.Contains(c.LogicalName))
+            .OrderBy(c => c.LogicalName, StringComparer.OrdinalIgnoreCase))
         {
-            if (skipLogicalNames.Contains(column.LogicalName)) continue;
             result.AddRange(BuildPropertyEntries(column, usedNames, lookupRelationships));
         }
 
@@ -152,7 +153,8 @@ public static class KotlinEntityCodeBuilder
             .Where(r => r.RelationshipType == "OneToMany"
                 && r.RelatedEntitySchemaName != null
                 && generatedEntitySchemaNames.Contains(r.RelatedEntitySchemaName))
-            .DistinctBy(r => r.NavigationPropertyName ?? r.SchemaName))
+            .DistinctBy(r => r.NavigationPropertyName ?? r.SchemaName)
+            .OrderBy(r => r.NavigationPropertyName ?? r.SchemaName, StringComparer.OrdinalIgnoreCase))
         {
             var navProp = rel.NavigationPropertyName ?? rel.SchemaName;
             if (string.IsNullOrWhiteSpace(navProp)) continue;

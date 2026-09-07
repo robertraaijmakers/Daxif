@@ -40,6 +40,39 @@ public sealed class KotlinGenerator
 
         _logger.Info($"Kotlin entities generated to: {outputPath}");
         _logger.Info($"Tables: {tables.Count}");
+
+        if (options.RunKtlintFormat)
+            RunKtlintFormat(outputPath);
+    }
+
+    private void RunKtlintFormat(string outputPath)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("ktlint")
+            {
+                ArgumentList = { "--format", $"{outputPath}/**/*.kt" },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null)
+            {
+                _logger.Warning("ktlint not found — skipping format pass.");
+                return;
+            }
+
+            process.WaitForExit();
+            var stderr = process.StandardError.ReadToEnd().Trim();
+            if (!string.IsNullOrEmpty(stderr)) _logger.Warning($"ktlint: {stderr}");
+            _logger.Info("ktlint format pass complete.");
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or System.IO.IOException)
+        {
+            _logger.Warning("ktlint not found — skipping format pass.");
+        }
     }
 
     private static void WriteAnnotationsFile(string outputPath, string basePackage)
