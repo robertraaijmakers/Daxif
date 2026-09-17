@@ -95,6 +95,7 @@ public sealed class KotlinGenerator
     {
         var coreDir = Path.Combine(outputPath, "core");
         Directory.CreateDirectory(coreDir);
+        File.WriteAllText(Path.Combine(coreDir, "D365TrackableEntity.kt"), KotlinBaseEntityCodeBuilder.BuildTrackableEntity(basePackage), System.Text.Encoding.UTF8);
         File.WriteAllText(Path.Combine(coreDir, "D365BaseEntity.kt"), KotlinBaseEntityCodeBuilder.BuildBaseEntity(basePackage), System.Text.Encoding.UTF8);
         File.WriteAllText(Path.Combine(coreDir, "D365OwnableEntity.kt"), KotlinBaseEntityCodeBuilder.BuildOwnableEntity(basePackage), System.Text.Encoding.UTF8);
     }

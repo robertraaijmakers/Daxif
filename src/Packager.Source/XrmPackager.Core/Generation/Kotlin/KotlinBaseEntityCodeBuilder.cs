@@ -2,36 +2,74 @@ namespace XrmPackager.Core.Generation.Kotlin;
 
 public static class KotlinBaseEntityCodeBuilder
 {
+    public static string BuildTrackableEntity(string basePackage)
+    {
+        var corePackage = $"{basePackage}.core";
+        return $@"package {corePackage}
+
+import com.fasterxml.jackson.annotation.JsonFilter
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.annotation.JsonProperty
+import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KProperty
+
+@JsonFilter(""d365DirtyFilter"")
+open class D365TrackableEntity {{
+
+    companion object
+
+    @JsonIgnore
+    private val _dirtyFields = mutableSetOf<String>()
+
+    @get:JsonIgnore
+    val dirtyFields: Set<String> get() = _dirtyFields
+
+    fun clearDirtyFields() = _dirtyFields.clear()
+
+    protected fun <T> trackable(initialValue: T, jsonName: String): ReadWriteProperty<Any?, T> =
+        object : ReadWriteProperty<Any?, T> {{
+            private var value = initialValue
+
+            override fun getValue(thisRef: Any?, property: KProperty<*>): T = value
+
+            override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {{
+                _dirtyFields.add(jsonName)
+                this.value = value
+            }}
+        }}
+
+    @field:JsonProperty(value = ""@odata.etag"", access = JsonProperty.Access.READ_ONLY)
+    @get:JsonProperty(value = ""@odata.etag"", access = JsonProperty.Access.READ_ONLY)
+    var etag: String? = null
+}}
+";
+    }
+
     public static string BuildBaseEntity(string basePackage)
     {
         var corePackage = $"{basePackage}.core";
         return $@"package {corePackage}
 
-import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.UUID
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-open class D365BaseEntity {{
-
-    @field:JsonProperty(value = ""@odata.etag"", access = JsonProperty.Access.READ_ONLY)
-    var etag: String? = null
+open class D365BaseEntity : D365TrackableEntity() {{
 
     @D365Field(logicalName = ""versionnumber"", kind = D365FieldKind.INTEGER)
-    @field:JsonProperty(""versionnumber"")
-    var versionnumber: Long? = null
+    @get:JsonProperty(""versionnumber"")
+    var versionnumber: Long? by trackable(null, ""versionnumber"")
 
     @D365Field(logicalName = ""createdon"", kind = D365FieldKind.DATETIME)
-    @field:JsonProperty(""createdon"")
-    var createdon: String? = null
+    @get:JsonProperty(""createdon"")
+    var createdon: String? by trackable(null, ""createdon"")
 
     @D365Field(logicalName = ""modifiedon"", kind = D365FieldKind.DATETIME)
-    @field:JsonProperty(""modifiedon"")
-    var modifiedon: String? = null
+    @get:JsonProperty(""modifiedon"")
+    var modifiedon: String? by trackable(null, ""modifiedon"")
 
     @D365Field(logicalName = ""overriddencreatedon"", kind = D365FieldKind.DATETIME)
-    @field:JsonProperty(""overriddencreatedon"")
-    var overriddencreatedon: String? = null
+    @get:JsonProperty(""overriddencreatedon"")
+    var overriddencreatedon: String? by trackable(null, ""overriddencreatedon"")
 
     @D365Field(logicalName = ""createdby"", kind = D365FieldKind.LOOKUP, readOnly = true)
     @field:JsonProperty(value = ""_createdby_value"", access = JsonProperty.Access.READ_ONLY)
@@ -69,6 +107,12 @@ open class D365OwnableEntity : D365BaseEntity() {{
     @field:JsonProperty(value = ""_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"", access = JsonProperty.Access.READ_ONLY)
     var owneridLogicalName: String? = null
 
+    @get:JsonProperty(value = ""ownerid_systemuser@odata.bind"", access = JsonProperty.Access.WRITE_ONLY)
+    var owneridSystemuserBind: String? by trackable(null, ""ownerid_systemuser@odata.bind"")
+
+    @get:JsonProperty(value = ""ownerid_team@odata.bind"", access = JsonProperty.Access.WRITE_ONLY)
+    var owneridTeamBind: String? by trackable(null, ""ownerid_team@odata.bind"")
+
     @D365Field(logicalName = ""owningbusinessunit"", kind = D365FieldKind.LOOKUP, readOnly = true)
     @field:JsonProperty(value = ""_owningbusinessunit_value"", access = JsonProperty.Access.READ_ONLY)
     var owningbusinessunitValue: UUID? = null
@@ -80,12 +124,6 @@ open class D365OwnableEntity : D365BaseEntity() {{
     @D365Field(logicalName = ""owninguser"", kind = D365FieldKind.LOOKUP, readOnly = true)
     @field:JsonProperty(value = ""_owninguser_value"", access = JsonProperty.Access.READ_ONLY)
     var owninguserValue: UUID? = null
-
-    @field:JsonProperty(value = ""ownerid_systemuser@odata.bind"", access = JsonProperty.Access.WRITE_ONLY)
-    var owneridSystemuserBind: String? = null
-
-    @field:JsonProperty(value = ""ownerid_team@odata.bind"", access = JsonProperty.Access.WRITE_ONLY)
-    var owneridTeamBind: String? = null
 }}
 ";
     }

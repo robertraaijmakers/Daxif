@@ -54,12 +54,12 @@ public static class KotlinEntityCodeBuilder
         var hasOwnerid = columnLogicalNames.Contains("ownerid");
         var hasCreatedon = columnLogicalNames.Contains("createdon");
 
-        string? baseClass = hasOwnerid ? "D365OwnableEntity"
+        var baseClass = hasOwnerid ? "D365OwnableEntity"
             : hasCreatedon ? "D365BaseEntity"
-            : null;
+            : "D365TrackableEntity";
 
         var skipLogicalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (baseClass != null) skipLogicalNames.UnionWith(BaseEntityLogicalNames);
+        if (baseClass is "D365BaseEntity" or "D365OwnableEntity") skipLogicalNames.UnionWith(BaseEntityLogicalNames);
         if (baseClass == "D365OwnableEntity") skipLogicalNames.UnionWith(OwnableEntityLogicalNames);
 
         var properties = BuildProperties(table, generatedEntitySchemaNames, skipLogicalNames);
@@ -71,10 +71,9 @@ public static class KotlinEntityCodeBuilder
         var sb = new StringBuilder();
         sb.AppendLine($"package {entityPackage}");
         sb.AppendLine();
-        sb.AppendLine("import com.fasterxml.jackson.annotation.JsonInclude");
         sb.AppendLine("import com.fasterxml.jackson.annotation.JsonProperty");
         sb.AppendLine($"import {corePackage}.D365Entity");
-        if (baseClass != null) sb.AppendLine($"import {corePackage}.{baseClass}");
+        sb.AppendLine($"import {corePackage}.{baseClass}");
         if (needsD365Field)
         {
             sb.AppendLine($"import {corePackage}.D365Field");
@@ -94,18 +93,7 @@ public static class KotlinEntityCodeBuilder
         sb.AppendLine($"    primaryKey = \"{KotlinNameHelper.EscapeString(table.PrimaryIdAttribute)}\",");
         sb.AppendLine($"    primaryName = \"{KotlinNameHelper.EscapeString(table.PrimaryNameAttribute ?? string.Empty)}\"");
         sb.AppendLine(")");
-        sb.AppendLine("@JsonInclude(JsonInclude.Include.NON_NULL)");
-
-        var classDeclaration = baseClass != null
-            ? $"class {entityName} : {baseClass}() {{"
-            : $"class {entityName} {{";
-        sb.AppendLine(classDeclaration);
-
-        if (baseClass == null)
-        {
-            sb.AppendLine("    @field:JsonProperty(value = \"@odata.etag\", access = JsonProperty.Access.READ_ONLY)");
-            sb.AppendLine("    var etag: String? = null");
-        }
+        sb.AppendLine($"class {entityName} : {baseClass}() {{");
 
         foreach (var prop in properties)
         {
@@ -164,8 +152,8 @@ public static class KotlinEntityCodeBuilder
 
             var relatedClass = KotlinNameHelper.ToClassName(rel.RelatedEntitySchemaName!) + "Entity";
             result.Add(new PropertyEntry(
-                $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}\", access = JsonProperty.Access.WRITE_ONLY)\n" +
-                $"    var {propName}: List<{relatedClass}>? = null",
+                $"    @get:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}\", access = JsonProperty.Access.WRITE_ONLY)\n" +
+                $"    var {propName}: List<{relatedClass}>? by trackable(null, \"{KotlinNameHelper.EscapeString(navProp)}\")",
                 $"List<{relatedClass}>", false));
         }
 
@@ -186,72 +174,72 @@ public static class KotlinEntityCodeBuilder
             case PrimaryIdColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.GUID, readOnly = true)\n" +
-                    $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", access = JsonProperty.Access.READ_ONLY)\n" +
-                    $"    var {propName}: UUID? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: UUID? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "UUID", true);
                 break;
 
             case StringColumnModel or MemoColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.STRING)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: String? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: String? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "String", true);
                 break;
 
             case IntegerColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.INTEGER)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: Int? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: Int? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "Int", true);
                 break;
 
             case BigIntColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.INTEGER)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: Long? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: Long? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "Long", true);
                 break;
 
             case BooleanColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.BOOLEAN)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: Boolean? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: Boolean? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "Boolean", true);
                 break;
 
             case DateTimeColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.DATETIME)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: String? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: String? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "String", true);
                 break;
 
             case DecimalColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.DECIMAL)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: BigDecimal? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: BigDecimal? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "BigDecimal", true);
                 break;
 
             case DoubleColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.DECIMAL)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: Double? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: Double? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "Double", true);
                 break;
 
             case MoneyColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.MONEY)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: BigDecimal? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: BigDecimal? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "BigDecimal", true);
                 break;
 
@@ -260,12 +248,12 @@ public static class KotlinEntityCodeBuilder
                 var kotlinType = enumCol.IsMultiSelect ? "List<Int>?" : "Int?";
                 var kind = enumCol.IsMultiSelect ? "MULTI_OPTION_SET" : "OPTION_SET";
                 var multiDeserialize = enumCol.IsMultiSelect
-                    ? $"\n    @field:JsonDeserialize(using = D365MultiOptionSetDeserializer::class)"
+                    ? $"\n    @get:JsonDeserialize(using = D365MultiOptionSetDeserializer::class)"
                     : "";
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.{kind})\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\"){multiDeserialize}\n" +
-                    $"    var {propName}: {kotlinType} = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\"){multiDeserialize}\n" +
+                    $"    var {propName}: {kotlinType} by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     kotlinType, true, enumCol.IsMultiSelect);
                 break;
             }
@@ -326,8 +314,8 @@ public static class KotlinEntityCodeBuilder
                         var bindName = Unique(propName + suffix, usedNames);
                         usedNames.Add(bindName);
                         yield return new PropertyEntry(
-                            $"    @field:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}@odata.bind\", access = JsonProperty.Access.WRITE_ONLY)\n" +
-                            $"    var {bindName}: String? = null",
+                            $"    @get:JsonProperty(value = \"{KotlinNameHelper.EscapeString(navProp)}@odata.bind\", access = JsonProperty.Access.WRITE_ONLY)\n" +
+                            $"    var {bindName}: String? by trackable(null, \"{KotlinNameHelper.EscapeString(navProp)}@odata.bind\")",
                             "String", false);
                     }
                 }
@@ -338,8 +326,8 @@ public static class KotlinEntityCodeBuilder
             case UniqueIdentifierColumnModel:
                 yield return new PropertyEntry(
                     $"    @D365Field(logicalName = \"{KotlinNameHelper.EscapeString(column.LogicalName)}\", kind = D365FieldKind.GUID)\n" +
-                    $"    @field:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
-                    $"    var {propName}: UUID? = null",
+                    $"    @get:JsonProperty(\"{KotlinNameHelper.EscapeString(column.LogicalName)}\")\n" +
+                    $"    var {propName}: UUID? by trackable(null, \"{KotlinNameHelper.EscapeString(column.LogicalName)}\")",
                     "UUID", true);
                 break;
 
