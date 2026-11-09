@@ -495,8 +495,13 @@ public sealed class MasterDataOperations
 
         foreach (var field in schema.Fields)
         {
-            if (!obj.TryGetPropertyValue(field.Name, out var node) || node is null)
+            if (!obj.TryGetPropertyValue(field.Name, out var node))
+                continue;
+
+            if (node is null)
             {
+                if (!field.IsPrimaryKey && field.Type != "file")
+                    entity[field.Name] = null;
                 continue;
             }
 
@@ -778,27 +783,42 @@ public sealed class MasterDataOperations
         foreach (var record in results.Entities)
         {
             var obj = new JsonObject();
-            foreach (var attr in record.Attributes)
+
+            if (includeFields != null)
             {
-                var key = attr.Key;
-                if (includeFields != null)
+                // Iterate the declared field list so null/cleared fields are explicitly written.
+                // Dataverse omits null attributes from the response, so TryGetValue returns false
+                // for them — we still need to output null so import can clear those fields.
+                foreach (var key in includeFields)
                 {
-                    if (!includeFields.Contains(key))
-                        continue;
+                    record.Attributes.TryGetValue(key, out var fieldValue);
+                    if (fileFieldNames.Contains(key))
+                    {
+                        obj[key] = fieldValue is not null
+                            ? DownloadAndSaveFile(client, record, key, outputFolder)
+                            : null;
+                    }
+                    else
+                    {
+                        obj[key] = fieldValue is null ? null : SerializeValue(fieldValue, "");
+                    }
                 }
-                else
+            }
+            else
+            {
+                foreach (var attr in record.Attributes)
                 {
+                    var key = attr.Key;
                     if (excludeFields.Contains(key))
                         continue;
-                }
-
-                if (fileFieldNames.Contains(key) && attr.Value is not null)
-                {
-                    obj[key] = DownloadAndSaveFile(client, record, key, outputFolder);
-                }
-                else
-                {
-                    obj[key] = attr.Value is null ? null : SerializeValue(attr.Value, "");
+                    if (fileFieldNames.Contains(key) && attr.Value is not null)
+                    {
+                        obj[key] = DownloadAndSaveFile(client, record, key, outputFolder);
+                    }
+                    else
+                    {
+                        obj[key] = attr.Value is null ? null : SerializeValue(attr.Value, "");
+                    }
                 }
             }
 
@@ -1058,8 +1078,6 @@ public sealed class MasterDataOperations
 
         foreach (var (key, node) in obj)
         {
-            if (node is null)
-                continue;
             if (!attrMeta.TryGetValue(key, out var meta))
                 continue;
             // File attributes are uploaded separately after the record is created/updated.
@@ -1078,6 +1096,12 @@ public sealed class MasterDataOperations
 
             if (meta.IsValidForCreate == false && meta.IsValidForUpdate == false)
                 continue;
+
+            if (node is null)
+            {
+                entity[key] = null;
+                continue;
+            }
 
             var value = MapJsonValueToSdkType(node, meta);
             if (value is null)
